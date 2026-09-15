@@ -22,6 +22,8 @@ const log = logger("bse.bhavcopy");
 
 export const NEW_URL = (ymd: string) => `${WWW}/download/BhavCopy/Equity/BhavCopy_BSE_CM_0_0_0_${ymd}_F_0000.CSV`;
 export const LEGACY_URL = (dmy: string) => `${WWW}/download/BhavCopy/Equity/EQ_ISINCODE_${dmy}.zip`;
+/** Before the ISIN variant: same columns without ISIN_CODE; served back to at least 2007. */
+export const OLD_URL = (dmy: string) => `${WWW}/download/BhavCopy/Equity/EQ${dmy}_CSV.ZIP`;
 
 export interface BhavRow {
   trade_date: string; scrip_cd: string; ticker: string | null; isin: string | null; series: string; instrument: string;
@@ -214,26 +216,29 @@ export async function fetchDay(client: BSEClient, day: string, saveRaw = true): 
     }
   }
 
-  // Fall back to the legacy zipped format.
+  // Fall back to the zipped formats: the ISIN variant, then the older one used for historical sessions.
   const dmy = `${day.slice(8, 10)}${day.slice(5, 7)}${day.slice(2, 4)}`;
-  let blob: Uint8Array;
-  try {
-    blob = await client.getBytes(LEGACY_URL(dmy));
-  } catch (e) {
-    if (e instanceof NotFound || (statusError(e) && e.status === 404)) return null;
-    throw e;
+  for (const url of [LEGACY_URL(dmy), OLD_URL(dmy)]) {
+    let blob: Uint8Array;
+    try {
+      blob = await client.getBytes(url);
+    } catch (e) {
+      if (e instanceof NotFound || (statusError(e) && e.status === 404)) continue;
+      throw e;
+    }
+    if (isHtml(blob)) continue;
+    let csvText: string | null;
+    try {
+      csvText = readLegacyZip(blob);
+    } catch (e) {
+      if (e instanceof BadZip) continue;
+      throw e;
+    }
+    if (csvText === null) continue;
+    if (saveRaw) fs.writeFileSync(path.join(config.RAW_DIR, `bhavcopy_${ymd}.zip`), blob);
+    return parseLegacy(csvText, day);
   }
-  if (isHtml(blob)) return null;
-  let csvText: string | null;
-  try {
-    csvText = readLegacyZip(blob);
-  } catch (e) {
-    if (e instanceof BadZip) return null;
-    throw e;
-  }
-  if (csvText === null) return null;
-  if (saveRaw) fs.writeFileSync(path.join(config.RAW_DIR, `bhavcopy_${ymd}.zip`), blob);
-  return parseLegacy(csvText, day);
+  return null;
 }
 
 export interface BhavcopySyncOptions { refetch?: boolean; saveRaw?: boolean }

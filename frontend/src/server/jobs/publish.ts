@@ -7,6 +7,8 @@
 //   - "date" tables: append-only price history, by trading date;
 //   - "full" tables: small derived tables compared row by row, including deletions.
 // Watchlist, portfolio and alert tables are not published: on the hosted site they belong to its visitors.
+// The full history backfilled here stays local; the hosted site gets recent sessions and filings (see the
+// windows below), which keeps it inside Turso's free storage and write allowance.
 import crypto from "node:crypto";
 import path from "node:path";
 import { config } from "../config";
@@ -19,7 +21,7 @@ import { buildPulse } from "../api/live";
 const log = logger("publish");
 
 type Spec =
-  | { table: string; mode: "stamp"; column: string; omit?: string[] }
+  | { table: string; mode: "stamp"; column: string; omit?: string[]; window?: { column: string; years: number } }
   | { table: string; mode: "date"; column: string }
   | { table: string; mode: "full"; ignore: string[] };
 
@@ -27,23 +29,23 @@ export const SPECS: Spec[] = [
   { table: "scrip", mode: "stamp", column: "updated_at" },
   { table: "bse_index", mode: "stamp", column: "updated_at" },
   { table: "corp_action", mode: "stamp", column: "fetched_at" },
-  { table: "announcement", mode: "stamp", column: "fetched_at" },
-  { table: "announcement_day", mode: "stamp", column: "fetched_at" },
-  { table: "bhavcopy_day", mode: "stamp", column: "fetched_at" },
+  { table: "announcement", mode: "stamp", column: "fetched_at", window: { column: "news_dt", years: 2 } },
+  { table: "announcement_day", mode: "stamp", column: "fetched_at", window: { column: "day", years: 2 } },
+  { table: "bhavcopy_day", mode: "stamp", column: "fetched_at", window: { column: "trade_date", years: 5 } },
   { table: "nse_symbol", mode: "stamp", column: "updated_at" },
   { table: "nse_index", mode: "stamp", column: "updated_at" },
   { table: "nse_index_constituent", mode: "stamp", column: "updated_at" },
-  { table: "nse_announcement", mode: "stamp", column: "fetched_at" },
-  { table: "nse_corp_action", mode: "stamp", column: "fetched_at" },
-  { table: "nse_board_meeting", mode: "stamp", column: "fetched_at" },
+  { table: "nse_announcement", mode: "stamp", column: "fetched_at", window: { column: "ann_dt", years: 2 } },
+  { table: "nse_corp_action", mode: "stamp", column: "fetched_at", window: { column: "ex_date", years: 5 } },
+  { table: "nse_board_meeting", mode: "stamp", column: "fetched_at", window: { column: "meeting_dt", years: 2 } },
   { table: "nse_financial_result", mode: "stamp", column: "fetched_at" },
   { table: "nse_fundamental", mode: "stamp", column: "fetched_at" },
   { table: "nse_statement", mode: "stamp", column: "fetched_at" },
   { table: "nse_shareholding", mode: "stamp", column: "fetched_at" },
   { table: "nse_shareholding_detail", mode: "stamp", column: "fetched_at" },
-  { table: "nse_insider_trade", mode: "stamp", column: "fetched_at" },
-  { table: "nse_bhavcopy_day", mode: "stamp", column: "fetched_at" },
-  { table: "nse_index_history_day", mode: "stamp", column: "fetched_at" },
+  { table: "nse_insider_trade", mode: "stamp", column: "fetched_at", window: { column: "broadcast", years: 2 } },
+  { table: "nse_bhavcopy_day", mode: "stamp", column: "fetched_at", window: { column: "trade_date", years: 5 } },
+  { table: "nse_index_history_day", mode: "stamp", column: "fetched_at", window: { column: "trade_date", years: 5 } },
   { table: "bhavcopy", mode: "date", column: "trade_date" },
   { table: "nse_bhavcopy", mode: "date", column: "trade_date" },
   { table: "nse_index_history", mode: "date", column: "trade_date" },
@@ -146,8 +148,10 @@ function publishTable(local: Db, remote: Db, state: Db, spec: Spec): number {
   // never skipped at a page boundary.
   let cursor: [string, number] = [mark, Number.MAX_SAFE_INTEGER];
   for (;;) {
-    const rows = local.all(`SELECT rowid AS __rowid, * FROM "${spec.table}" WHERE ("${spec.column}" > ? OR ("${spec.column}" = ? AND rowid > ?)) ORDER BY "${spec.column}", rowid LIMIT ${PAGE}`,
-      [cursor[0], cursor[0], cursor[1]]);
+    const win = spec.mode === "stamp" && spec.window ? spec.window : null;
+    const cutoff = win ? `${new Date().getFullYear() - win.years}${new Date().toISOString().slice(4, 10)}` : "";
+    const rows = local.all(`SELECT rowid AS __rowid, * FROM "${spec.table}" WHERE ("${spec.column}" > ? OR ("${spec.column}" = ? AND rowid > ?))${win ? ` AND substr("${win.column}", 1, 10) >= ?` : ""} ORDER BY "${spec.column}", rowid LIMIT ${PAGE}`,
+      win ? [cursor[0], cursor[0], cursor[1], cutoff] : [cursor[0], cursor[0], cursor[1]]);
     if (!rows.length) break;
     const last = rows[rows.length - 1];
     cursor = [String(last[spec.column]), Number(last.__rowid)];

@@ -24,6 +24,7 @@ import { addRule, listRules, seedDefaults } from "./alerts/rules";
 import { importCasData, importCsv, ImportError, latestSnapshot, saveWatchlist } from "./core/portfolio";
 import { CasFormatError, CasPasswordError, parseCas } from "./core/cas";
 import { initFromSnapshot, publish, publishLive } from "./jobs/publish";
+import { progress as backfillProgress } from "./jobs/backfill";
 
 const log = logger("cli");
 

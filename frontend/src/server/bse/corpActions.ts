@@ -108,7 +108,8 @@ export function parseScripHistory(scripCd: string | number, raw: unknown, ts: st
       scrip_cd: code,
       purpose,
       ex_date: normDate(pyTruthy(r.Ex_date) ? r.Ex_date : r.ExDate),
-      record_date: normDate(pyTruthy(r.RD_Date) ? r.RD_Date : r.RecordDate),
+      // BSE's per-scrip history carries only the book closure / record date; use it when no record date is given.
+      record_date: normDate(pyTruthy(r.RD_Date) ? r.RD_Date : pyTruthy(r.RecordDate) ? r.RecordDate : r.BCRD_from),
       bc_from: normDate(r.BCRD_from),
       bc_to: normDate(r.BCRD_to) || null,
       amount: typeof amt === "number" || typeof amt === "boolean" ? Number(amt) : amountFromPurpose(purpose),
