@@ -1,4 +1,4 @@
-// Keeps the hosted site's Turso copy current from this PC: data every 30 minutes, the live pulse every
+// Keeps the hosted site's Turso copy current from this PC: data every 20 minutes, the live pulse every
 // minute while NSE is trading (every 15 minutes otherwise). Runs only when Turso credentials are in .env.
 //
 // Each publish runs as a separate process. Turso calls block the calling thread while they wait on the
@@ -12,7 +12,7 @@ import type { StopSignal } from "./worker";
 
 const log = logger("publish");
 
-const DATA_EVERY_MS = 30 * 60_000;
+const DATA_EVERY_MS = 20 * 60_000;
 const LIVE_OPEN_MS = 60_000;
 const LIVE_CLOSED_MS = 15 * 60_000;
 const CLI = path.join(process.cwd(), "src", "server", "cli.ts");
@@ -37,7 +37,7 @@ function runCli(args: string[], timeoutMs: number): Promise<string> {
 
 export async function publishDataLoop(stop: StopSignal) {
   if (!isConfigured()) return;
-  log.info("publishing to the hosted database every 30 minutes");
+  log.info("publishing to the hosted database every 20 minutes");
   while (!stop.stopped) {
     try {
       log.info(`published: ${(await runCli(["publish"], 3 * 3600_000)) || "nothing new"}`);
