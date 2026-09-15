@@ -1,0 +1,30 @@
+# Credentials and local configuration
+.env
+.env.local
+
+# Market database, downloaded exchange files and logs (rebuilt by the app's data jobs)
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.log
+*.pid
+
+# Archived Python pipeline (replaced by the TypeScript backend in frontend/src/server)
+legacy-python/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node / Next.js (also covered by frontend/.gitignore)
+node_modules/
+.next/
+.next-*/
+
+# Editor and OS files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

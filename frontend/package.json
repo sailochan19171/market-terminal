@@ -1,0 +1,43 @@
+{
+  "name": "frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "market": "node --disable-warning=ExperimentalWarning --import tsx src/server/cli.ts",
+    "jobs": "node --disable-warning=ExperimentalWarning --import tsx src/server/jobs/runner.ts",
+    "e2e:dashboard": "tsx tests/e2e/dashboard.ts",
+    "e2e:markets": "tsx tests/e2e/markets.ts",
+    "e2e": "npm run e2e:dashboard && npm run e2e:markets"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "csv-parse": "^7.0.2",
+    "fflate": "^0.8.3",
+    "lightweight-charts": "^5.2.1",
+    "lucide-react": "^1.45.0",
+    "next": "16.3.5",
+    "nodemailer": "^10.0.9",
+    "pdfjs-dist": "^6.3.289",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "recharts": "^3.10.1",
+    "saxes": "^6.0.0",
+    "tsx": "^4.23.13"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^22.20.2",
+    "@types/nodemailer": "^8.0.1",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.5",
+    "playwright": "^1.55.0",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
