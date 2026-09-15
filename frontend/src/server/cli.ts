@@ -134,6 +134,8 @@ async function run(command: string, pos: string[], f: Flags, db: Db): Promise<nu
       print(`  ${"filings pending".padEnd(18)} ${F.pendingCount(db)}`);
       print("\njobs:");
       for (const j of jobState.all(db)) print(`  ${String(j.name).padEnd(10)} ${String(j.status ?? "?").padEnd(8)} started ${j.last_started ?? "-"}  heartbeat ${j.heartbeat ?? "-"}  ${j.message ?? ""}`);
+      print("\nfull-history backfill:");
+      for (const b of backfillProgress(db)) print(`  ${String(b.source).padEnd(20)} ${String(b.status).padEnd(9)} back to ${b.reached ?? "-"}  (${b.rows ?? 0} rows)  ${b.message ?? ""}`);
       print("\nrecent runs:");
       for (const r of db.all("SELECT task, started_at, status, rows FROM run_log ORDER BY id DESC LIMIT 8")) {
         print(`  ${String(r.task).padEnd(20)} ${String(r.started_at).padEnd(26)} ${String(r.status ?? "?").padEnd(6)} ${r.rows ?? 0}`);
