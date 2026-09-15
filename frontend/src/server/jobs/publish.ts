@@ -19,7 +19,7 @@ import { buildPulse } from "../api/live";
 const log = logger("publish");
 
 type Spec =
-  | { table: string; mode: "stamp"; column: string }
+  | { table: string; mode: "stamp"; column: string; omit?: string[] }
   | { table: string; mode: "date"; column: string }
   | { table: string; mode: "full"; ignore: string[] };
 
@@ -50,6 +50,9 @@ export const SPECS: Spec[] = [
   { table: "index_value", mode: "date", column: "as_of" },
   { table: "nse_index_value", mode: "date", column: "as_of" },
   { table: "company_metrics", mode: "full", ignore: ["updated_at"] },
+  // New analysis versions (scheduled ones follow new results). Ids are assigned by the hosted database, since
+  // visitors create versions there too; rows match on (company_key, version).
+  { table: "analysis_version", mode: "stamp", column: "updated_at", omit: ["id"] },
 ];
 
 const PAGE = 2000;
@@ -114,7 +117,9 @@ function publishRows(state: Db, remote: Db, spec: Spec, rows: Row[], pk: string[
 
 function publishTable(local: Db, remote: Db, state: Db, spec: Spec): number {
   if (!local.hasTable(spec.table)) return 0;
-  const pk = primaryKey(local, spec.table);
+  const omitted = spec.mode === "stamp" ? spec.omit ?? [] : [];
+  // Rows whose own key is omitted are identified by the table's other unique columns.
+  const pk = omitted.length && spec.table === "analysis_version" ? ["company_key", "version"] : primaryKey(local, spec.table);
   alignColumns(local, remote, spec.table);
 
   if (spec.mode === "full") {
@@ -146,9 +151,10 @@ function publishTable(local: Db, remote: Db, state: Db, spec: Spec): number {
     if (!rows.length) break;
     const last = rows[rows.length - 1];
     cursor = [String(last[spec.column]), Number(last.__rowid)];
+    const drop = ["__rowid", ...(spec.mode === "stamp" ? spec.omit ?? [] : [])];
     const clean = rows.map((r) => {
       const copy = { ...r };
-      delete copy.__rowid;
+      for (const k of drop) delete copy[k];
       return copy;
     });
     sent += spec.mode === "stamp" ? publishRows(state, remote, spec, clean, pk, skip) : (remote.upsert(spec.table, clean), clean.length);

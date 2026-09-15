@@ -347,6 +347,9 @@ export function pendingCount(db: Db, opts: { priorityOnly?: boolean } = {}): num
 
 type Outcome = "ok" | "nodata" | "unparsed" | "retry";
 
+/** Downloads keep failing on the network: the batch was cut short (rows already parsed are saved). */
+export class NetworkStall extends Error {}
+
 /** Download and parse one filing. */
 async function fetchParse(client: NSEClient, row: Row): Promise<[Figures | null, Outcome]> {
   try {
@@ -405,12 +408,18 @@ export async function sync(client: NSEClient, db: Db, opts: SyncOptions = {}): P
   let written = 0;
   let done = 0;
   let batch: Row[] = [];
+  // A long-lived process can end up with connections that hang until they time out; after this many network
+  // failures in a row the rest of the batch is skipped, so the caller can start over with fresh connections.
+  let networkFailures = 0;
+  const STALL_AFTER = 20;
   const flush = () => {
     written += db.upsert("nse_fundamental", batch);
     batch = [];
   };
   await mapPool(todo, workers, async (row) => {
+    if (networkFailures >= STALL_AFTER) return;
     const [figures, outcome] = await fetchParse(client, row);
+    networkFailures = outcome === "retry" ? networkFailures + 1 : 0;
     done += 1;
     if (outcome !== "retry") batch.push(record(row, figures, figures || outcome !== "ok" ? outcome : "nodata"));
     if (batch.length >= commitEvery) {
@@ -421,6 +430,7 @@ export async function sync(client: NSEClient, db: Db, opts: SyncOptions = {}): P
   });
   if (batch.length) flush();
   log.info(`fundamentals -> ${written} rows`);
+  if (networkFailures >= STALL_AFTER) throw new NetworkStall(`${STALL_AFTER} downloads in a row failed on the network`);
   return written;
 }
 

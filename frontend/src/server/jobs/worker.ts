@@ -160,6 +160,13 @@ export async function dataLoop(db: Db, stop: StopSignal) {
         await nap(IDLE_SLEEP_MS, stop);
       }
     } catch (e) {
+      if (e instanceof F.NetworkStall) {
+        // New clients share the process-wide connection pool, so only a fresh process clears hung connections.
+        // The web server restarts the runner after a short delay (jobs/spawn.ts).
+        log.error(`${(e as Error).message}; restarting the job runner for fresh connections`);
+        state.mark(db, "worker", { status: "error", heartbeat: now(), message: "network stalled; restarting" });
+        process.exit(75);
+      }
       // Network, a locked database, anything: back off with fresh sessions and retry.
       errors++;
       log.warn(`round failed (${errors} in a row): ${(e as Error).message}`);
