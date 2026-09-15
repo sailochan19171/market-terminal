@@ -10,6 +10,7 @@ import { DataTable } from "@/components/DataTable";
 import { CountUp, HeroStat, MarketIllustration, PageHero } from "@/components/Illustrations";
 import { Heatmap } from "@/components/market/Heatmap";
 import { LivePulse } from "@/components/market/LivePulse";
+import { PageLoader } from "@/components/PageLoader";
 import { MarketOverview } from "@/components/market/MarketOverview";
 import { Card, CardBody, CardHeader, ErrorNote, Pct, Segmented, Skeleton } from "@/components/ui";
 import { useApi } from "@/lib/api";
@@ -212,13 +213,7 @@ interface SummaryLite { session: string; totals: { turnover_cr: number; advances
 interface TickerLite { bse: { items: { name: string; label: string; value: number; change: number; pct: number }[] } }
 
 function HomeSkeleton() {
-  return (
-    <div className="space-y-6" role="status" aria-label="Loading markets">
-      <Skeleton className="h-44 w-full rounded-3xl" />
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-6">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-24" />)}</div>
-      <Skeleton className="h-96 w-full" />
-    </div>
-  );
+  return <PageLoader label="Loading Indian markets" detail="Indices, movers, breadth and filings from NSE and BSE." />;
 }
 
 function ExchangeSummaryCard({ exchange, summary }: { exchange: "NSE" | "BSE"; summary: SummaryLite | null }) {

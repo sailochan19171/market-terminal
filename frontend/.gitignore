@@ -43,3 +43,5 @@ next-env.d.ts
 # side-by-side builds (NEXT_DIST_DIR)
 /.next-*/
 /tests/e2e/shots/
+/.netlify/
+/deno.lock

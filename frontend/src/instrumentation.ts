@@ -1,6 +1,7 @@
 // Starts the background job process with the web server, so data keeps updating without a separate service.
 export async function register() {
-  if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  // The hosted site (MARKET_DB=turso) has no long-lived process: nothing to start or warm up.
+  if (process.env.NEXT_RUNTIME !== "nodejs" || process.env.MARKET_DB === "turso") return;
   const { startJobs } = await import("./server/jobs/spawn");
   startJobs();
   // Load the home page's slow aggregates into memory (and the disk cache) before the first visitor asks.

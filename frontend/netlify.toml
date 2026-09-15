@@ -1,0 +1,14 @@
+# Netlify: the site and its API routes as functions, reading the hosted Turso database.
+# Runtime settings (MARKET_DB=turso, TURSO_DATABASE_URL, TURSO_AUTH_TOKEN, optional SITE_PASSWORD) are set
+# as site environment variables, because values in this file reach the build only, not the functions.
+[build]
+  command = "npm run build"
+  # A separate output folder, so building here never disturbs a local server running from .next.
+  publish = ".next-netlify"
+
+[build.environment]
+  NODE_VERSION = "22"
+  NEXT_TELEMETRY_DISABLED = "1"
+  MARKET_DB = "turso"
+  MARKET_JOBS = "off"
+  NEXT_DIST_DIR = ".next-netlify"

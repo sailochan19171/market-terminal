@@ -8,10 +8,11 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { BrandMark } from "@/components/BrandMark";
 import { startRouteProgress } from "@/components/RouteProgress";
 import { useEffect, useRef, useState } from "react";
 import { api, useApi } from "@/lib/api";
-import { dateOnly, num, pct, tone } from "@/lib/format";
+import { num, pct, tone } from "@/lib/format";
 
 interface SearchResult {
   companies: { key: string; symbol: string | null; bseCode: string | null; company: string; industry: string | null; close: number | null; pct_1d: number | null }[];
@@ -190,9 +191,6 @@ function TickerStrip() {
   const loop = [...items, ...items];
   return (
     <div className="flex h-10 items-stretch border-t border-slate-100 bg-slate-50/80 text-xs dark:border-slate-800 dark:bg-slate-900/60">
-      <span className="flex shrink-0 items-center gap-1.5 bg-indigo-600 px-3 font-semibold text-white">
-        <span className="h-1.5 w-1.5 rounded-full bg-emerald-300 anim-pulse" aria-hidden />Close · {dateOnly(data?.nse.session)}
-      </span>
       <div className="relative flex-1 overflow-hidden" aria-label="Index values at the last close">
         <div className="animate-ticker flex h-full w-max items-center">
           {loop.map((t, i) => (
@@ -317,9 +315,7 @@ export function Header() {
           <Menu size={20} />
         </button>
         <Link href="/" className="group flex shrink-0 items-center gap-2">
-          <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-indigo-600 via-violet-600 to-cyan-500 text-white shadow-md transition group-hover:rotate-3 group-hover:scale-105">
-            <Activity size={18} strokeWidth={2.5} />
-          </span>
+          <BrandMark size={38} className="drop-shadow-md transition group-hover:-rotate-3 group-hover:scale-105" />
           <span className="hidden leading-tight sm:block">
             <span className="block text-[15px] font-semibold tracking-tight">Market Terminal</span>
             <span className="block text-[10px] font-medium uppercase tracking-[0.16em] text-slate-400">NSE · BSE research</span>
@@ -348,7 +344,7 @@ export function Footer() {
     <footer className="mt-16 border-t border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
       <div className="mx-auto grid max-w-[1400px] gap-8 px-4 py-10 sm:grid-cols-2 sm:px-6 lg:grid-cols-6">
         <div className="lg:col-span-1">
-          <p className="font-semibold">Market Terminal</p>
+          <p className="flex items-center gap-2 font-semibold"><BrandMark size={26} />Market Terminal</p>
           <p className="mt-2 text-sm text-slate-500">A personal research tool built on exchange-published data. Not affiliated with NSE, BSE or any data vendor.</p>
         </div>
         {MENU.map((g) => (

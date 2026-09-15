@@ -97,7 +97,7 @@ export function dashboard(db: Db, ident: string, a: Args): { data: Row; cache: s
   const inRange = (d: string) => (!start || d >= start) && (!end || d <= end);
 
   let syncStatus: Row | null = null;
-  if (!version && !asOf && identity.symbol && !identity.limited) {
+  if (!version && !asOf && identity.symbol && !identity.limited && !db.isRemote) {
     try {
       if (sync.needsSync(db, identity.symbol)) sync.start(db, identity.symbol);
       syncStatus = sync.status(db, identity.symbol);

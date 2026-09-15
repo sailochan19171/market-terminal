@@ -2,6 +2,7 @@
 import { getDb } from "../db";
 import * as C from "./commands";
 import type { Step } from "./scheduler";
+import { isConfigured, publish } from "./publish";
 
 export function dailySteps(): Step[] {
   const db = getDb();
@@ -24,5 +25,7 @@ export function dailySteps(): Step[] {
     { name: "metrics", run: () => C.metrics(db) },
     { name: "analyses", run: () => C.analyses(db) },
     { name: "alerts", run: async () => (await C.alerts(db)).sent },
+    // The hosted site gets the new session straight away rather than at the next half-hourly publish.
+    ...(isConfigured() ? [{ name: "publish", run: async () => Object.values(publish(db)).reduce((a, b) => a + b, 0) }] : []),
   ];
 }

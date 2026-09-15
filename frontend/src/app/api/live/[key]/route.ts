@@ -9,7 +9,7 @@ export const GET = handle(async (req: Request, ctx: Ctx<{ key: string }>) => {
   const { key } = await ctx.params;
   client ??= new NSEClient();
   try {
-    return json(await fetchLive(client, key, Args.of(req).str("force") === "1"));
+    return json(await fetchLive(client, key, Args.of(req).str("force") === "1"), { shared: 60 });
   } catch (e) {
     if (e instanceof UnknownModule) return json({ error: `unknown module '${key}'` }, { status: 404 });
     // A live feed being unavailable should not read as a broken page.

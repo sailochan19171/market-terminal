@@ -1,7 +1,9 @@
-// SQLite access on Node's built-in driver (node:sqlite), shared by API routes, jobs and the CLI.
-import { DatabaseSync, type SQLInputValue, type StatementSync } from "node:sqlite";
+// SQLite access shared by API routes, jobs and the CLI: Node's built-in driver (node:sqlite) for the local file,
+// or Turso over HTTP for the hosted site, behind one synchronous interface.
+import type { DatabaseSync, SQLInputValue, StatementSync } from "node:sqlite";
 import { config, ensureDirs } from "./config";
 import { SCHEMA_BSE, SCHEMA_NSE } from "./core/schema";
+import { RemoteDriver, type Value } from "./remoteDb";
 
 export type Row = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 export type Param = string | number | bigint | null | undefined | boolean | Uint8Array;
@@ -26,21 +28,42 @@ const MIGRATIONS: Record<string, Record<string, string>> = {
   },
 };
 
+/** Where a connection points: the local SQLite file, or a hosted Turso database. */
+export type Target = { kind: "local"; file?: string; readOnly?: boolean } | { kind: "remote"; url: string; token: string };
+
+/** The deployment's database: Turso when MARKET_DB=turso (the hosted site), otherwise the local file. */
+export function defaultTarget(): Target {
+  return config.DB_MODE === "turso" ? { kind: "remote", url: config.TURSO_DATABASE_URL, token: config.TURSO_AUTH_TOKEN } : { kind: "local" };
+}
+
+// Loaded on first use so hosted functions, which never open a local file, do not need node:sqlite at all.
+const sqlite = () => process.getBuiltinModule("node:sqlite") as typeof import("node:sqlite");
+
 export class Db {
-  readonly raw: DatabaseSync;
+  readonly remote: RemoteDriver | null = null;
+  private local: DatabaseSync | null = null;
   private cache = new Map<string, StatementSync>();
 
-  constructor(file = config.DB_PATH, opts: { readOnly?: boolean } = {}) {
+  constructor(target: Target = defaultTarget()) {
+    if (target.kind === "remote") {
+      if (!target.url || !target.token) throw new Error("TURSO_DATABASE_URL and TURSO_AUTH_TOKEN must be set to use the hosted database");
+      this.remote = new RemoteDriver(target.url, target.token);
+      return;
+    }
     ensureDirs();
-    this.raw = new DatabaseSync(file, { readOnly: opts.readOnly ?? false });
-    this.raw.exec(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS}`);
-    if (!opts.readOnly) this.raw.exec("PRAGMA foreign_keys = ON");
+    this.local = new (sqlite().DatabaseSync)(target.file ?? config.DB_PATH, { readOnly: target.readOnly ?? false });
+    this.local.exec(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS}`);
+    if (!target.readOnly) this.local.exec("PRAGMA foreign_keys = ON");
+  }
+
+  get isRemote() {
+    return this.remote !== null;
   }
 
   private stmt(sql: string): StatementSync {
     let s = this.cache.get(sql);
     if (!s) {
-      s = this.raw.prepare(sql);
+      s = this.local!.prepare(sql);
       if (this.cache.size > 500) this.cache.clear();
       this.cache.set(sql, s);
     }
@@ -48,40 +71,55 @@ export class Db {
   }
 
   all<T = Row>(sql: string, params: Param[] = []): T[] {
+    if (this.remote) return this.remote.all(sql, bind(params) as Value[]) as T[];
     return this.stmt(sql).all(...bind(params)) as T[];
   }
 
   get<T = Row>(sql: string, params: Param[] = []): T | undefined {
+    if (this.remote) return this.remote.all(sql, bind(params) as Value[])[0] as T | undefined;
     return this.stmt(sql).get(...bind(params)) as T | undefined;
   }
 
   /** First column of the first row, or null. */
   scalar<T = unknown>(sql: string, params: Param[] = []): T | null {
-    const row = this.stmt(sql).get(...bind(params)) as Row | undefined;
+    const row = this.get<Row>(sql, params);
     if (!row) return null;
     const v = Object.values(row)[0];
     return (v === undefined ? null : v) as T | null;
   }
 
-  run(sql: string, params: Param[] = []) {
+  run(sql: string, params: Param[] = []): { changes: number | bigint; lastInsertRowid: number | bigint } {
+    if (this.remote) return this.remote.run(sql, bind(params) as Value[]);
     return this.stmt(sql).run(...bind(params));
   }
 
   exec(sql: string) {
-    this.raw.exec(sql);
+    if (this.remote) this.remote.exec(sql);
+    else this.local!.exec(sql);
   }
 
-  /** Run `fn` in a write transaction. BEGIN IMMEDIATE takes the write lock up front, so a long
+  /** Run `fn` in a write transaction. Locally BEGIN IMMEDIATE takes the write lock up front, so a long
    *  reader in another process never leaves us unable to upgrade (the classic BUSY deadlock). */
   transaction<T>(fn: () => T): T {
-    if (this.raw.isTransaction) return fn();
-    this.raw.exec("BEGIN IMMEDIATE");
+    if (this.remote) {
+      this.remote.begin();
+      try {
+        const out = fn();
+        this.remote.commit();
+        return out;
+      } catch (e) {
+        try { this.remote.rollback(); } catch { /* the stream is gone either way */ }
+        throw e;
+      }
+    }
+    if (this.local!.isTransaction) return fn();
+    this.local!.exec("BEGIN IMMEDIATE");
     try {
       const out = fn();
-      this.raw.exec("COMMIT");
+      this.local!.exec("COMMIT");
       return out;
     } catch (e) {
-      try { this.raw.exec("ROLLBACK"); } catch { /* already rolled back */ }
+      try { this.local!.exec("ROLLBACK"); } catch { /* already rolled back */ }
       throw e;
     }
   }
@@ -93,6 +131,10 @@ export class Db {
     const cols = Object.keys(list[0]);
     const sql = `INSERT INTO "${table}" (${cols.map((c) => `"${c}"`).join(", ")}) VALUES (${cols.map(() => "?").join(", ")}) `
       + `ON CONFLICT DO UPDATE SET ${cols.map((c) => `"${c}" = excluded."${c}"`).join(", ")}`;
+    if (this.remote) {
+      this.remote.runMany(sql, list.map((r) => bind(cols.map((c) => r[c])) as Value[]));
+      return list.length;
+    }
     const st = this.stmt(sql);
     this.transaction(() => {
       for (const r of list) st.run(...bind(cols.map((c) => r[c])));
@@ -119,7 +161,8 @@ export class Db {
 
   close() {
     this.cache.clear();
-    this.raw.close();
+    this.local?.close();
+    this.remote?.close();
   }
 }
 
@@ -128,7 +171,8 @@ const initialised = new WeakSet<Db>();
 
 /** Base schema plus column migrations. Module-specific tables are created by their own ensureSchema(). */
 export function init(db: Db) {
-  if (initialised.has(db)) return;
+  // The hosted database is uploaded with its schema, and Turso refuses schema-level PRAGMAs such as journal_mode.
+  if (initialised.has(db) || db.isRemote) return;
   db.exec(SCHEMA_BSE);
   db.exec(SCHEMA_NSE);
   for (const [table, cols] of Object.entries(MIGRATIONS)) db.addColumns(table, cols);
@@ -144,8 +188,8 @@ export function getDb(): Db {
   return shared;
 }
 
-export function openDb(): Db {
-  const db = new Db();
+export function openDb(target: Target = defaultTarget()): Db {
+  const db = new Db(target);
   init(db);
   return db;
 }

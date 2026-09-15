@@ -67,8 +67,14 @@ export const config = {
   ANGEL_PASSWORD: s("ANGEL_PASSWORD"),
   ANGEL_TOTP_SECRET: s("ANGEL_TOTP_SECRET"),
 
-  /** Set MARKET_JOBS=off to run the web app without background data jobs. */
-  JOBS_ENABLED: s("MARKET_JOBS", "on").toLowerCase() !== "off",
+  /** "turso" on the hosted site: read and write the Turso database instead of the local file. */
+  DB_MODE: s("MARKET_DB", "local").toLowerCase(),
+  TURSO_DATABASE_URL: s("TURSO_DATABASE_URL"),
+  TURSO_AUTH_TOKEN: s("TURSO_AUTH_TOKEN"),
+
+  /** Set MARKET_JOBS=off to run the web app without background data jobs. The hosted site never runs them:
+   *  serverless functions cannot keep a worker alive, so this PC updates the data and publishes it. */
+  JOBS_ENABLED: s("MARKET_JOBS", "on").toLowerCase() !== "off" && s("MARKET_DB", "local").toLowerCase() !== "turso",
   FUNDAMENTALS_WORKERS: f("FUNDAMENTALS_WORKERS", 4),
   FUNDAMENTALS_RPS: f("FUNDAMENTALS_RPS", 4),
 };

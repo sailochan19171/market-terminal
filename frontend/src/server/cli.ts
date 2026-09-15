@@ -23,6 +23,7 @@ import * as F from "./nse/fundamentals";
 import { addRule, listRules, seedDefaults } from "./alerts/rules";
 import { importCasData, importCsv, ImportError, latestSnapshot, saveWatchlist } from "./core/portfolio";
 import { CasFormatError, CasPasswordError, parseCas } from "./core/cas";
+import { initFromSnapshot, publish, publishLive } from "./jobs/publish";
 
 const log = logger("cli");
 
@@ -94,6 +95,9 @@ const HELP = `Indian market data pipeline (BSE + NSE)
   nse-indices [--no-constituents]
   nse-corporate [window] [--only a,b]
   nse-sync-all [window] [--no-raw]
+  publish                        push new and changed rows to the hosted Turso database
+  publish init --from FILE       start publishing from the snapshot that was uploaded to Turso
+  publish live                   publish the live market pulse once
 `;
 
 async function run(command: string, pos: string[], f: Flags, db: Db): Promise<number> {
@@ -323,6 +327,24 @@ async function run(command: string, pos: string[], f: Flags, db: Db): Promise<nu
       print(`nse full sync complete: ${total} rows`);
       return 0;
     }
+    case "publish": {
+      if (pos[0] === "init") {
+        const from = str(f, "from");
+        if (!from) return print("publish init needs --from <snapshot file>"), 1;
+        initFromSnapshot(from);
+        print("publish marks set from " + from);
+        return 0;
+      }
+      if (pos[0] === "live") {
+        await publishLive();
+        print("live pulse published");
+        return 0;
+      }
+      const sent = publish(db);
+      print(Object.entries(sent).filter(([, n]) => n).map(([t, n]) => `  ${t.padEnd(26)} ${n}`).join("\n") || "  nothing new");
+      return 0;
+    }
+
     default:
       print(`unknown command '${command}'\n\n${HELP}`);
       return 2;

@@ -11,7 +11,9 @@
     "jobs": "node --disable-warning=ExperimentalWarning --import tsx src/server/jobs/runner.ts",
     "e2e:dashboard": "tsx tests/e2e/dashboard.ts",
     "e2e:markets": "tsx tests/e2e/markets.ts",
-    "e2e": "npm run e2e:dashboard && npm run e2e:markets"
+    "e2e": "npm run e2e:dashboard && npm run e2e:markets",
+    "deploy:netlify": "netlify build --offline && netlify deploy --prod --no-build --dir .netlify/static",
+    "publish": "node --disable-warning=ExperimentalWarning --import tsx src/server/cli.ts publish"
   },
   "dependencies": {
     "clsx": "^2.1.1",

@@ -1,4 +1,5 @@
 // Helpers shared by the API route handlers.
+import { config } from "../config";
 import { getDb, type Db, type Row } from "../db";
 import { logger } from "../log";
 import { ensureSchema as ensureMetrics } from "../core/metrics";
@@ -19,10 +20,11 @@ export const badRequest = (message: string) => new ApiError(400, message, { erro
 
 let schemaReady = false;
 
-/** The shared connection with every module's tables in place (checked once per process). */
+/** The shared connection with every module's tables in place (checked once per process). The hosted database
+ *  is uploaded with its full schema, so its functions skip the checks and save the round trips. */
 export function db(): Db {
   const d = getDb();
-  if (!schemaReady) {
+  if (!schemaReady && !d.isRemote) {
     ensureMetrics(d);
     ensureAnalysis(d);
     ensureStatementSchema(d);
@@ -45,10 +47,24 @@ export function memo<T>(key: string, ttlMs: number, fn: () => T): T {
   return value;
 }
 
-export function json(data: unknown, init: ResponseInit & { cache?: string } = {}) {
+/** True on the hosted site (Netlify functions reading Turso). */
+export const hosted = () => config.DB_MODE === "turso";
+
+// End-of-day data changes a few times a day, so on the hosted site the CDN answers repeat requests and the
+// database is read once per URL every few minutes instead of on every visit.
+const CDN_SECONDS = 900;
+
+/** `shared`: seconds the hosted site's CDN may serve this response, or false for per-user / live data. */
+export function json(data: unknown, init: ResponseInit & { cache?: string; shared?: number | false } = {}) {
   const headers = new Headers(init.headers);
   headers.set("Cache-Control", init.cache ?? "no-store");
-  return Response.json(data, { ...init, headers });
+  const shared = init.shared ?? CDN_SECONDS;
+  if (hosted() && shared && (init.status ?? 200) === 200) {
+    headers.set("Netlify-CDN-Cache-Control", `public, s-maxage=${shared}, stale-while-revalidate=86400, durable`);
+    // Netlify's cache key leaves out the query string unless asked; filters, pages and ranges all live there.
+    headers.set("Netlify-Vary", "query");
+  }
+  return Response.json(data, { status: init.status, statusText: init.statusText, headers });
 }
 
 /** Wrap a handler: ApiError -> its status and message, anything else -> 500 with a readable message. */

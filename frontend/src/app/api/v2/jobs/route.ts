@@ -18,5 +18,5 @@ export const GET = handle(() => {
       nseSession: d.scalar("SELECT MAX(trade_date) FROM nse_bhavcopy_day WHERE status = 'ok'"),
       bseSession: d.scalar("SELECT MAX(trade_date) FROM bhavcopy_day WHERE status = 'ok'"),
     },
-  });
+  }, { shared: false });
 });

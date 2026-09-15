@@ -6,6 +6,9 @@ import { NSEClient } from "../nse/client";
 import { fetch as liveFetch } from "../nse/live";
 import { logger } from "../log";
 import { toNum } from "../util";
+import { getDb } from "../db";
+import * as published from "../published";
+import { hosted } from "./common";
 
 const log = logger("live");
 
@@ -135,9 +138,25 @@ async function build(): Promise<LivePulse> {
   };
 }
 
+/** Shown on the hosted site until the first pulse has been published. */
+function unpublished(): LivePulse {
+  return {
+    status: { open: false, label: "Live data pending", message: "The live snapshot has not been published yet", tradeDate: null },
+    asOf: null, fetchedAt: new Date().toISOString(), indices: [],
+    movers: { gainers: [], losers: [], volume: [], highs: [], lows: [] },
+    counts: { highs: null, lows: null }, errors: ["live snapshot: not published yet"],
+  };
+}
+
+/** Build a fresh snapshot now (the publisher on this PC). */
+export const buildPulse = build;
+
 /** The shared snapshot. Only the very first call waits for NSE: after that an expired snapshot is returned at once
  *  while a single background fetch replaces it, so page refreshes stay instant. */
 export async function pulse(): Promise<LivePulse> {
+  // The hosted site shows what this PC last published: NSE live feeds need a warmed session that a short-lived
+  // function cannot keep, and exchange sites often refuse cloud data-centre addresses.
+  if (hosted()) return published.read<LivePulse>(getDb(), published.LIVE_PULSE)?.data ?? unpublished();
   const fresh = snapshot && Date.now() - snapshot.at < TTL_MS;
   if (!fresh && !inflight) {
     inflight = build()

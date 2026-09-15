@@ -2,7 +2,7 @@
 
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { CandleLoader } from "@/components/PageLoader";
+import { BrandMark } from "@/components/BrandMark";
 
 const START_EVENT = "route-progress:start";
 const SAFETY_MS = 15_000;
@@ -112,7 +112,7 @@ export function RouteProgress() {
       <div role="status" aria-live="polite"
         className="motion-rise pointer-events-none fixed bottom-6 left-1/2 z-[100] flex -translate-x-1/2 items-center gap-2 rounded-full border border-slate-200 bg-white/95 px-3 py-1.5 text-xs font-medium text-slate-700 shadow-lg backdrop-blur dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-200"
         style={{ opacity: state.phase === "done" ? 0 : 1, transition: "opacity 300ms ease" }}>
-        <CandleLoader size={16} />
+        <BrandMark size={20} animated />
         <span className="max-w-[60vw] truncate">Loading {state.label}…</span>
       </div>
     </>

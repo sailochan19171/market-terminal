@@ -4,6 +4,7 @@ import { available as ftsAvailable, matchQuery } from "../core/searchIndex";
 import * as sync from "../nse/companySync";
 import { addDays, median, pctChange, placeholders } from "../util";
 import { ApiError, Args, badRequest, memo } from "./common";
+import * as published from "../published";
 
 export const HOME_TILES = [
   "NIFTY 50", "NIFTY NEXT 50", "NIFTY BANK", "NIFTY FINANCIAL SERVICES", "NIFTY MIDCAP 100", "NIFTY SMALLCAP 250",
@@ -52,12 +53,18 @@ export function home(db: Db) {
     breadth,
     marketCapLakhCr: (db.scalar<number>("SELECT SUM(market_cap_cr) FROM company_metrics WHERE close IS NOT NULL") || 0) / 1e5,
     announcements: db.all("SELECT symbol, company, subject, details, ann_dt, pdf_url FROM nse_announcement ORDER BY ann_dt DESC LIMIT 20"),
-    // Full-table counts over a million filings: seconds on a cold disk cache, and they barely move.
-    counts: memo("home:counts", COUNTS_TTL_MS, () => ({
-      companies: db.scalar("SELECT COUNT(*) FROM company_metrics WHERE close IS NOT NULL"),
-      indices: db.scalar("SELECT COUNT(DISTINCT index_name) FROM nse_index_history"),
-      filings: (db.scalar<number>("SELECT COUNT(*) FROM nse_announcement") || 0) + (db.scalar<number>("SELECT COUNT(*) FROM announcement") || 0),
-    })),
+    // Full-table counts over a million filings take seconds and barely move: memoised locally, and the hosted
+    // site reads the copy this PC publishes instead of scanning the tables itself.
+    counts: (db.isRemote ? published.read<{ companies: number; indices: number; filings: number }>(db, published.SITE_STATS)?.data : null) ?? memo("home:counts", COUNTS_TTL_MS, () => siteCounts(db)),
+  };
+}
+
+/** Companies, indices and filings on record (full scans; see home). */
+export function siteCounts(db: Db) {
+  return {
+    companies: db.scalar("SELECT COUNT(*) FROM company_metrics WHERE close IS NOT NULL"),
+    indices: db.scalar("SELECT COUNT(DISTINCT index_name) FROM nse_index_history"),
+    filings: (db.scalar<number>("SELECT COUNT(*) FROM nse_announcement") || 0) + (db.scalar<number>("SELECT COUNT(*) FROM announcement") || 0),
   };
 }
 
@@ -133,7 +140,8 @@ export function peers(db: Db, rawSymbol: string) {
 
 export function syncStatus(db: Db, rawSymbol: string, startNow: boolean) {
   const symbol = rawSymbol.toUpperCase();
-  const started = startNow ? sync.start(db, symbol) : false;
+  // Filings are read by the job runner, which only exists where the database is local.
+  const started = startNow && !db.isRemote ? sync.start(db, symbol) : false;
   return { ...sync.status(db, symbol), started };
 }
 
