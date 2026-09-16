@@ -154,6 +154,27 @@ function namedElsewhere(db: Db, question: string, symbol: string, company: strin
   return { options: [] };
 }
 
+/**
+ * A name the question treats as a company - "revenue of cisco", "ibm company" - that is not listed here.
+ *
+ * Only the phrasings that mark a word as a name are used, so a typo in the middle of a sentence is not mistaken
+ * for a foreign listing. This matters when no model is available: without it, a question about Cisco was
+ * answered with this page's own figures.
+ */
+function unlistedName(db: Db, question: string, here: string): string | null {
+  const q = question.toLowerCase();
+  const candidates = [
+    ...[...q.matchAll(/\b(?:of|for|about|from)\s+([a-z][a-z&.'-]{2,})\b/g)].map((m) => m[1]),
+    ...[...q.matchAll(/\b([a-z][a-z&.'-]{2,})\s+(?:company|ltd|limited|corp|corporation|inc|plc)\b/g)].map((m) => m[1]),
+  ];
+  for (const name of candidates) {
+    if (NOT_A_NAME.has(name) || here.includes(name)) continue;
+    const known = db.scalar<number>("SELECT COUNT(*) FROM company_metrics WHERE symbol = ? OR company LIKE ?", [name.toUpperCase(), `%${name}%`]);
+    if (!known) return name;
+  }
+  return null;
+}
+
 const pct = (v: number | null, d = 1) => (v === null ? "Data unavailable" : `${v > 0 ? "+" : ""}${v.toFixed(d)}%`);
 const cr = (v: number | null) => (v === null ? "Data unavailable" : `₹${Math.round(v).toLocaleString("en-IN")} Cr`);
 const rs = (v: number | null) => (v === null ? "Data unavailable" : `₹${v.toLocaleString("en-IN")}`);
@@ -366,6 +387,21 @@ export async function ask(db: Db, symbol: string, question: string, opts: AskOpt
     const moved = await ask(db, elsewhere.pick.symbol, question, { ...opts, history: [] });
     return { ...moved, headline: `You asked about ${elsewhere.pick.company}, not ${named ?? sym}. ${moved.headline}` };
   }
+  const foreign = elsewhere.pick || elsewhere.options.length ? null : unlistedName(db, question, `${sym} ${named ?? ""}`.toLowerCase());
+  if (foreign) {
+    const shown = foreign.charAt(0).toUpperCase() + foreign.slice(1);
+    return {
+      question, symbol: sym, company: named ?? null,
+      headline: `${shown} does not file with NSE or BSE, so there is nothing about it on record here.`,
+      points: [
+        `This platform reads the filings of about 3,400 companies listed in India. A company listed abroad, or a private one, is outside it.`,
+        `The company in view is ${named ?? sym}. ${WHAT_IT_ANSWERS[0]}`,
+        "To read a different Indian company, search for it at the top of the page, or name it in your question.",
+      ],
+      citations: [], suggestions: STARTERS, writtenBy: "data", modelPoints: false, asOf: new Date().toISOString(),
+    };
+  }
+
   if (elsewhere.options.length > 1) {
     return {
       question, symbol: sym, company: named ?? null,
