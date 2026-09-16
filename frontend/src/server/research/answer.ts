@@ -17,7 +17,11 @@ export interface Answer {
   citations: Citation[];
   suggestions: string[];
   writtenBy: "data" | "model";
+  /** True when the supporting points are the model's words too; false when only the opening line is. */
+  modelPoints: boolean;
   asOf: string;
+  /** The material the answer was built from. Only filled when asked for, by the checks that verify grounding. */
+  context?: string;
 }
 
 type Intent = "invest" | "when_buy" | "when_avoid" | "valuation" | "risks" | "profit" | "debt" | "cash" | "shareholding" | "dividend" | "news" | "changed" | "overview";
@@ -25,25 +29,31 @@ type Intent = "invest" | "when_buy" | "when_avoid" | "valuation" | "risks" | "pr
 const RULES: [Intent, RegExp][] = [
   ["when_buy", /when.*(buy|invest|enter)|buy zone|entry price|at what price/i],
   ["when_avoid", /when.*(not|avoid|sell|exit)|should i avoid|why not/i],
-  ["valuation", /valuation|fair value|expensive|cheap|overvalued|undervalued|p\/?e|price to book|worth/i],
-  ["risks", /risk|danger|wrong|downside|concern|red flag|loss/i],
-  ["profit", /profit|earnings|revenue|sales|margin|result|quarter|growth|pat|eps/i],
+  // Word boundaries matter here: "p/e" without them matches the "pe" inside "operating", and "pat" the one
+  // inside "pattern", which quietly routed whole questions to the wrong answer.
+  ["valuation", /valuation|fair value|expensive|cheap|overvalued|undervalued|\bp\s?\/?\s?e\b|price to book|\bp\/?b\b|worth/i],
+  ["risks", /risk|danger|wrong|downside|concern|red flag|\bloss\b/i],
+  ["profit", /profit|earnings|revenue|sales|margin|result|quarter|growth|\bpat\b|\beps\b/i],
   ["debt", /debt|borrow|leverage|interest|solvency|loan/i],
   ["cash", /cash flow|cashflow|free cash|fcf|capex|operating cash/i],
   ["shareholding", /sharehold|promoter|fii|dii|institution|pledge|holding/i],
   ["dividend", /dividend|payout|yield/i],
-  ["news", /news|announce|filing|disclosure|update|happening|happened/i],
+  ["news", /news|announce|filing|filed?|disclosure|update|happening|happened|exchange/i],
   ["changed", /what changed|recent|latest|since last|new/i],
   ["invest", /invest|should i|good stock|worth buying|opportunity|recommend/i],
 ];
 
-const intentOf = (q: string): Intent => RULES.find(([, re]) => re.test(q))?.[0] ?? "overview";
+/** Which of the thirteen written answers a question calls for. Exported so the routing can be tested. */
+export const intentOf = (q: string): Intent => RULES.find(([, re]) => re.test(q))?.[0] ?? "overview";
+export type { Intent };
 
 const pct = (v: number | null, d = 1) => (v === null ? "Data unavailable" : `${v > 0 ? "+" : ""}${v.toFixed(d)}%`);
 const cr = (v: number | null) => (v === null ? "Data unavailable" : `₹${Math.round(v).toLocaleString("en-IN")} Cr`);
 const rs = (v: number | null) => (v === null ? "Data unavailable" : `₹${v.toLocaleString("en-IN")}`);
 /** Keeps the model's context small: hosted free tiers meter tokens by the minute. */
 const clip = (t: string, n: number) => (t.length > n ? `${t.slice(0, n)}…` : t);
+/** 1st, 2nd, 3rd, 23rd - never "23th". */
+const ordinal = (n: number) => `${n}${["th", "st", "nd", "rd"][(n % 100) - (n % 10) !== 10 ? n % 10 : 0] ?? "th"}`;
 
 function baseCitations(d: Decision): Citation[] {
   const c: Citation[] = [];
@@ -67,7 +77,9 @@ function baseCitations(d: Decision): Citation[] {
  * removed rather than shown, which is the whole basis on which a reader is asked to trust the answer.
  */
 export function cleanPoints(text: string, valid: Set<number>): string[] {
+  // A model asked for bullets sometimes runs them together on one line with dashes; split those back out.
   return text.split(/\n+/)
+    .flatMap((l) => (l.length > 160 && (l.match(/\s[-–—]\s+(?=[A-Z0-9₹])/g) ?? []).length >= 2 ? l.split(/\s[-–—]\s+(?=[A-Z0-9₹])/) : [l]))
     .map((line) => line
       .replace(/^\s*(?:[-*•‣]|\d+[.)])\s*/, "")            // bullet or numbered list marker
       .replace(/[【〔［]\s*(\d+)\s*[】〕］]/g, "[$1]")         // full-width brackets the model sometimes emits
@@ -76,6 +88,7 @@ export function cleanPoints(text: string, valid: Set<number>): string[] {
       .replace(/(^|[\s(])[*_]([^*_\n]+)[*_]($|[\s).,;:])/g, "$1$2$3") // italics
       .replace(/^#+\s*/, "").replace(/`/g, "")
       .replace(/\[(\d+)\]/g, (m, n) => (valid.has(Number(n)) ? m : "")) // a citation pointing at nothing
+      .replace(/\[[A-Za-z][A-Za-z ./-]{1,28}\]/g, "")      // a label the model made up, such as [DIVIDEND]
       .replace(/\s{2,}/g, " ")
       .trim())
     // Drop separators and bare headings ("Main risks:"), keeping only lines that say something.
@@ -118,7 +131,7 @@ function compose(intent: Intent, d: Decision, found: Passage[]): { headline: str
         points: [
           `Margin of safety ${v.marginOfSafety === null ? "unavailable" : `${v.marginOfSafety.toFixed(1)}%`}; range across models ${rs(v.range.bear)} to ${rs(v.range.bull)}, confidence ${v.confidence} [1].`,
           ...v.models.filter((m) => m.fairValue !== null).slice(0, 3).map((m) => `${m.label}: ${rs(m.fairValue)} — ${m.basis} [2].`),
-          v.history.medianPe ? `P/E ${v.inputs.currentPe ?? "?"} against its own ${v.history.years}-year median of ${v.history.medianPe}${v.history.percentile !== null ? ` (${v.history.percentile}th percentile)` : ""} [1].` : "",
+          v.history.medianPe ? `P/E ${v.inputs.currentPe ?? "?"} against its own ${v.history.years}-year median of ${v.history.medianPe}${v.history.percentile !== null ? ` (${ordinal(v.history.percentile)} percentile)` : ""} [1].` : "",
           v.peers.medianPe ? `Peer median P/E ${v.peers.medianPe} across ${v.peers.count} companies in ${v.peers.industry} [1].` : "",
         ].filter(Boolean),
       };
@@ -211,7 +224,7 @@ const CACHE_TTL_MS = 60 * 60_000;
 const CACHE_MAX = 300;
 const cache = new Map<string, { at: number; answer: Answer }>();
 
-export async function ask(db: Db, symbol: string, question: string): Promise<Answer> {
+export async function ask(db: Db, symbol: string, question: string, opts: { debug?: boolean } = {}): Promise<Answer> {
   const d = decide(db, symbol);
   const key = `${d.symbol}|${d.facts.price.session ?? ""}|${question.trim().toLowerCase().replace(/\s+/g, " ")}`;
   const hit = cache.get(key);
@@ -227,8 +240,11 @@ export async function ask(db: Db, symbol: string, question: string): Promise<Ans
   for (const p of found) citations.push({ n: citations.length + 1, label: `${p.exchange} filing: ${p.title.slice(0, 90)}`, source: `${p.exchange} announcement`, period: p.when.slice(0, 10), url: p.url });
 
   const written = compose(intent, d, found);
+  let shown = ""; // the context, kept only for the grounding checks
+  let headline = written.headline;
   let points = written.points;
   let writtenBy: "data" | "model" = "data";
+  let modelPoints = false;
 
   if (llm.available()) {
     // Every line the model may quote carries the citation number the reader will see, so a claim in the answer
@@ -237,26 +253,39 @@ export async function ask(db: Db, symbol: string, question: string): Promise<Ans
       const c = citations.find((x) => x.label === label);
       return c ? `[${c.n}] ` : "";
     };
+    const f = d.facts;
     const context = [
-      `COMPANY: ${d.company ?? d.symbol} (${d.symbol}), ${d.facts.industry ?? "industry unknown"}${d.facts.bank ? ", a lender" : ""}`,
-      `${cite("Price and market cap")}PRICE: ${rs(d.facts.price.value)} on ${d.facts.price.session}`,
+      `COMPANY: ${d.company ?? d.symbol} (${d.symbol}), ${f.industry ?? "industry unknown"}${f.bank ? ", a lender" : ""}; market cap ${cr(f.marketCapCr.value)}`,
+      `${cite("Price and market cap")}PRICE: ${rs(f.price.value)} on ${f.price.session}; return 1 month ${pct(f.returns.ret1m.value)}, 1 year ${pct(f.returns.ret1y.value)}`,
+      // The question decides what a reader needs, so the figures they might ask about are all here: growth,
+      // margins, dividends and corporate actions were missing, and a model cannot report what it is not given.
+      `${cite("Quarterly results")}GROWTH: revenue ${pct(f.growth.revenueYoY.value)} and profit ${pct(f.growth.patYoY.value)} against the same quarter last year; three-year CAGR revenue ${pct(f.growth.revenueCagr3y.value)}, profit ${pct(f.growth.patCagr3y.value)}`,
+      `${cite("Quarterly results")}MARGINS: operating ${pct(f.margins.operating.value)}, net ${pct(f.margins.net.value)}, gross ${pct(f.margins.gross.value)}; return on equity ${pct(f.returns.roe.value)}`,
+      `DIVIDEND: ${rs(f.dividend.perShare.value)} per share over twelve months, yield ${pct(f.dividend.yield.value)}, payout ${pct(f.dividend.payout.value)} of earnings`,
+      f.actions.length ? `CORPORATE ACTIONS: ${f.actions.slice(0, 6).map((a) => `${a.purpose}${a.exDate ? ` (ex-date ${a.exDate})` : ""}`).join(" | ")}` : "CORPORATE ACTIONS: none on record in the last two years",
+      `VALUATION MULTIPLES: P/E ${d.valuation.inputs.currentPe ?? "unavailable"} against its own ${d.valuation.history.years}-year median ${d.valuation.history.medianPe ?? "unavailable"}; peer median P/E ${d.valuation.peers.medianPe ?? "unavailable"} across ${d.valuation.peers.count} companies in ${d.valuation.peers.industry ?? "its industry"}`,
       `COMPUTED HERE, no citation needed - FAIR VALUE: ${rs(d.valuation.fairValue)} (range ${rs(d.valuation.range.bear)}–${rs(d.valuation.range.bull)}, confidence ${d.valuation.confidence}); margin of safety ${d.valuation.marginOfSafety}%; status ${d.valuation.status}`,
       `MODELS: ${d.valuation.models.filter((m) => m.fairValue !== null).map((m) => `${m.label} ${rs(m.fairValue)}`).join(" | ")}`,
       `COMPUTED HERE, no citation needed - VERDICT: ${d.verdict}`,
       `SCORES: ${d.scores.map((x) => `${x.label} ${x.score ?? "n/a"}`).join(" | ")}`,
       `CONDITIONS: ${d.conditionsMet}. ${d.conditions.map((c) => `${c.label}: ${c.met === null ? "untestable" : c.met ? "met" : "not met"}`).join(" | ")}`,
       `COMPUTED HERE, no citation needed - RISK: ${d.risk.level}. ${d.risk.factors.filter((r) => r.level !== "low").map((r) => `${r.label}: ${clip(r.detail, 90)}`).join(" | ")}`,
-      `${cite("Quarterly results")}QUARTERS: ${d.facts.quarters.slice(0, 4).map((q) => `${q.period} revenue ${cr(q.revenue)} profit ${cr(q.pat)} EPS ${rs(q.eps)}`).join(" | ")}`,
-      `${cite("Balance sheet")}BALANCE SHEET (${d.facts.balance.period}): debt ${cr(d.facts.balance.debtCr.value)}, cash ${cr(d.facts.balance.cashCr.value)}, D/E ${d.facts.balance.debtToEquity.value}`,
-      `${cite("Cash flow statement")}CASH FLOW (${d.facts.cash.period}): operating ${cr(d.facts.cash.cfoCr.value)}, capex ${cr(d.facts.cash.capexCr.value)}, free ${cr(d.facts.cash.fcfCr.value)}`,
-      `${cite("Shareholding pattern")}SHAREHOLDING (${d.facts.shareholding.asOf}): promoter ${d.facts.shareholding.promoter.value}%, FII ${d.facts.shareholding.fii.value}%, DII ${d.facts.shareholding.dii.value}%`,
+      `${cite("Quarterly results")}QUARTERS: ${f.quarters.slice(0, 4).map((q) => `${q.period} revenue ${cr(q.revenue)} profit ${cr(q.pat)} EPS ${rs(q.eps)}`).join(" | ")}`,
+      `${cite("Balance sheet")}BALANCE SHEET (${f.balance.period}): debt ${cr(f.balance.debtCr.value)}, cash ${cr(f.balance.cashCr.value)}, D/E ${f.balance.debtToEquity.value}, interest cover ${f.balance.interestCover.value ?? "n/a"}`,
+      `${cite("Cash flow statement")}CASH FLOW (${f.cash.period}): operating ${cr(f.cash.cfoCr.value)}, capex ${cr(f.cash.capexCr.value)}, free ${cr(f.cash.fcfCr.value)}, profit converted to cash ${pct(f.cash.conversion.value)}`,
+      `${cite("Shareholding pattern")}SHAREHOLDING (${f.shareholding.asOf}): promoter ${f.shareholding.promoter.value}%, FII ${f.shareholding.fii.value}%, DII ${f.shareholding.dii.value}%, public ${f.shareholding.public.value}%; promoter change ${f.shareholding.promoterChange.value ?? "n/a"} points on the quarter`,
       ...known.map((p, i) => `[${baseCount + i + 1}] ${p.kind}, ${p.when.slice(0, 10)}: ${p.title}. ${clip(p.detail ?? "", 320)}`),
       ...found.map((p, i) => `[${baseCount + known.length + i + 1}] ${p.exchange} filing ${p.when.slice(0, 10)}: ${p.title}${p.detail ? `. ${clip(p.detail, 140)}` : ""}`),
     ].join("\n");
+    shown = context;
     const text = await llm.complete(question, context);
     const cleaned = text ? cleanPoints(text, new Set(citations.map((c) => c.n))) : [];
     if (cleaned.length) {
-      points = cleaned;
+      // The model's opening sentence answers the question asked; the rule-written headline answers whichever of
+      // the thirteen intents the question was routed to, which is not always the same thing.
+      [headline, ...points] = cleaned;
+      modelPoints = points.length > 0;
+      if (!points.length) points = written.points; // a one-line answer keeps the written detail beneath it
       writtenBy = "model";
     }
   }
@@ -265,7 +294,7 @@ export async function ask(db: Db, symbol: string, question: string): Promise<Ans
     question,
     symbol: d.symbol,
     company: d.company,
-    headline: written.headline,
+    headline,
     points,
     citations,
     suggestions: [
@@ -277,7 +306,9 @@ export async function ask(db: Db, symbol: string, question: string): Promise<Ans
       "What changed recently?",
     ],
     writtenBy,
+    modelPoints,
     asOf: new Date().toISOString(),
+    ...(opts.debug ? { context: shown } : {}),
   };
   if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value!);
   cache.set(key, { at: Date.now(), answer });

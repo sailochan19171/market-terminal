@@ -17,7 +17,9 @@
     "check:language": "tsx scripts/check-language.ts",
     "check:answers": "tsx scripts/check-answers.ts",
     "check:llm": "tsx scripts/check-llm.ts",
-    "check": "npm run check:verdict && npm run check:language",
+    "check:rag": "tsx scripts/check-rag.ts",
+    "check:routing": "tsx scripts/check-routing.ts",
+    "check": "npm run check:routing && npm run check:verdict && npm run check:language",
     "deploy:netlify": "netlify build --offline && netlify deploy --prod --no-build --dir .netlify/static",
     "publish": "node --disable-warning=ExperimentalWarning --import tsx src/server/cli.ts publish"
   },
