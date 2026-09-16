@@ -33,13 +33,21 @@ const DEFAULT_MODEL: Record<string, string> = {
 
 const shape = (provider: string) => (provider === "anthropic" || provider === "gemini" ? provider : "openai");
 
+/** Enough room for six bullets and, on a reasoning model, the thinking that precedes them. */
+const MAX_TOKENS = 1800;
+const REASONING = /gpt-oss|qwen3|deepseek-r1|reasoner|thinking/i;
+
 export const SYSTEM = [
   "You are an equity research assistant for Indian listed companies (NSE and BSE).",
   "Answer only from the CONTEXT supplied with the question. Never add figures, dates or events that are not in it.",
   "If the context does not answer the question, say: 'The filings and figures on record do not answer that.'",
   "Be brief: at most six short bullet points, each with the figure and its period.",
-  "Cite sources as [1], [2] matching the numbered context items.",
+  "Cite a source by the number in front of the context line it came from, in square brackets: [1], [2].",
+  "Only ever cite numbers that appear in the context. Never invent a label such as [RISK] or [FAIR VALUE].",
+  "A line marked COMPUTED HERE is this platform's own calculation: repeat it without a citation, and never attach another source's number to it.",
+  "Write plain sentences. No markdown, no bold, no headings, no nested bullets.",
   "Never promise returns, never say guaranteed, and describe estimates as estimates.",
+  "Never tell the reader to buy, sell or hold, and never give a price target: describe what the figures show and let them judge.",
 ].join(" ");
 
 /** Ask the configured model. Returns null when no key is set or the call fails. */
@@ -51,10 +59,16 @@ export async function complete(question: string, context: string): Promise<strin
   const prompt = `CONTEXT\n${context}\n\nQUESTION\n${question}`;
   const body: Record<string, unknown> =
     kind === "anthropic"
-      ? { model, max_tokens: 700, system: SYSTEM, messages: [{ role: "user", content: prompt }] }
+      ? { model, max_tokens: MAX_TOKENS, system: SYSTEM, messages: [{ role: "user", content: prompt }] }
       : kind === "gemini"
-        ? { systemInstruction: { parts: [{ text: SYSTEM }] }, contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 700 } }
-        : { model, max_tokens: 700, temperature: 0.2, messages: [{ role: "system", content: SYSTEM }, { role: "user", content: prompt }] };
+        ? { systemInstruction: { parts: [{ text: SYSTEM }] }, contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: MAX_TOKENS } }
+        : {
+          model, max_tokens: MAX_TOKENS, temperature: 0.2,
+          // Reasoning models spend the same budget thinking before they write, and a long research context can
+          // use all of it, leaving the answer empty. Keep the thinking short; the reasoning is not shown anyway.
+          ...(REASONING.test(model) ? { reasoning_effort: "low" } : {}),
+          messages: [{ role: "system", content: SYSTEM }, { role: "user", content: prompt }],
+        };
 
   const base = config.LLM_BASE_URL || ENDPOINTS[provider];
   if (!base) throw new Error(`LLM_PROVIDER=${provider} is not a known host; set LLM_BASE_URL to its OpenAI-compatible endpoint`);
@@ -65,7 +79,15 @@ export async function complete(question: string, context: string): Promise<strin
   else headers.Authorization = `Bearer ${config.LLM_API_KEY}`;
 
   try {
-    const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(45_000) });
+    let res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(45_000) });
+    // Free tiers meter tokens by the minute, and a research context is not small. The host says how long to
+    // wait; waiting once is better than dropping the reader back to the written answer for a few seconds' burst.
+    if (res.status === 429) {
+      const wait = Math.min(Number(res.headers.get("retry-after") ?? 0) * 1000 || 4000, 12_000);
+      log.warn(`rate limited by ${provider}; retrying in ${Math.round(wait / 1000)}s`);
+      await new Promise((r) => setTimeout(r, wait));
+      res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(45_000) });
+    }
     const text = await res.text();
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
     const data = JSON.parse(text);
@@ -74,7 +96,11 @@ export async function complete(question: string, context: string): Promise<strin
       : kind === "gemini"
         ? data.candidates?.[0]?.content?.parts?.[0]?.text
         : data.choices?.[0]?.message?.content;
-    return typeof answer === "string" && answer.trim() ? answer.trim() : null;
+    if (typeof answer === "string" && answer.trim()) return answer.trim();
+    // An empty answer is nearly always a budget that ran out mid-thought; say so rather than failing silently.
+    const reason = data.choices?.[0]?.finish_reason ?? data.stop_reason ?? "unknown";
+    log.warn(`${model} returned no text (finish reason: ${reason})${reason === "length" ? "; raise MAX_TOKENS or lower the reasoning effort" : ""}`);
+    return null;
   } catch (e) {
     log.warn(`model call failed: ${(e as Error).message}`);
     return null;

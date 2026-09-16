@@ -42,6 +42,8 @@ const intentOf = (q: string): Intent => RULES.find(([, re]) => re.test(q))?.[0] 
 const pct = (v: number | null, d = 1) => (v === null ? "Data unavailable" : `${v > 0 ? "+" : ""}${v.toFixed(d)}%`);
 const cr = (v: number | null) => (v === null ? "Data unavailable" : `₹${Math.round(v).toLocaleString("en-IN")} Cr`);
 const rs = (v: number | null) => (v === null ? "Data unavailable" : `₹${v.toLocaleString("en-IN")}`);
+/** Keeps the model's context small: hosted free tiers meter tokens by the minute. */
+const clip = (t: string, n: number) => (t.length > n ? `${t.slice(0, n)}…` : t);
 
 function baseCitations(d: Decision): Citation[] {
   const c: Citation[] = [];
@@ -55,6 +57,30 @@ function baseCitations(d: Decision): Citation[] {
   if (f.cash.period) add("Cash flow statement", "NSE XBRL filing", f.cash.period, f.cash.url);
   if (f.shareholding.asOf) add("Shareholding pattern", "NSE XBRL filing", f.shareholding.asOf, f.shareholding.url);
   return c;
+}
+
+/**
+ * A model's reply, made safe to show.
+ *
+ * Models reach for markdown, for their own bracket characters, and occasionally for a citation that points at
+ * nothing - "[RISK]", or a number past the end of the list. Anything that cannot be traced to a real citation is
+ * removed rather than shown, which is the whole basis on which a reader is asked to trust the answer.
+ */
+export function cleanPoints(text: string, valid: Set<number>): string[] {
+  return text.split(/\n+/)
+    .map((line) => line
+      .replace(/^\s*(?:[-*•‣]|\d+[.)])\s*/, "")            // bullet or numbered list marker
+      .replace(/[【〔［]\s*(\d+)\s*[】〕］]/g, "[$1]")         // full-width brackets the model sometimes emits
+      .replace(/[【〔][^】〕]*[】〕]/g, "")                    // an invented label such as 【RISK】
+      .replace(/\*\*([^*]+)\*\*/g, "$1")                   // bold
+      .replace(/(^|[\s(])[*_]([^*_\n]+)[*_]($|[\s).,;:])/g, "$1$2$3") // italics
+      .replace(/^#+\s*/, "").replace(/`/g, "")
+      .replace(/\[(\d+)\]/g, (m, n) => (valid.has(Number(n)) ? m : "")) // a citation pointing at nothing
+      .replace(/\s{2,}/g, " ")
+      .trim())
+    // Drop separators and bare headings ("Main risks:"), keeping only lines that say something.
+    .filter((line) => line.length > 12 && !/^[-–—_=*#\s]*$/.test(line) && !/^[A-Za-z ]{3,24}:$/.test(line))
+    .slice(0, 6);
 }
 
 /** The written-from-data answer, before any model is asked to rephrase it. */
@@ -179,14 +205,24 @@ function compose(intent: Intent, d: Decision, found: Passage[]): { headline: str
 }
 
 /** Answer one question about one company. */
+// The same question about the same company, before any new data has landed, has the same answer. Holding it for
+// an hour keeps a shared model quota for questions nobody has asked yet, and makes a repeated question instant.
+const CACHE_TTL_MS = 60 * 60_000;
+const CACHE_MAX = 300;
+const cache = new Map<string, { at: number; answer: Answer }>();
+
 export async function ask(db: Db, symbol: string, question: string): Promise<Answer> {
   const d = decide(db, symbol);
+  const key = `${d.symbol}|${d.facts.price.session ?? ""}|${question.trim().toLowerCase().replace(/\s+/g, " ")}`;
+  const hit = cache.get(key);
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.answer;
   const bseCode = db.scalar<string>("SELECT bse_code FROM company_metrics WHERE symbol = ?", [d.symbol]);
   const intent = intentOf(question);
-  const found = passages(db, d.symbol, bseCode ? String(bseCode) : null, question, 6);
+  const found = passages(db, d.symbol, bseCode ? String(bseCode) : null, question, 5);
   const known = knowledge(db, d.symbol, question, 4);
 
   const citations = baseCitations(d);
+  const baseCount = citations.length;
   for (const p of known) citations.push({ n: citations.length + 1, label: p.title.slice(0, 90), source: `knowledge base (${p.kind})`, period: p.when.slice(0, 10), url: p.url });
   for (const p of found) citations.push({ n: citations.length + 1, label: `${p.exchange} filing: ${p.title.slice(0, 90)}`, source: `${p.exchange} announcement`, period: p.when.slice(0, 10), url: p.url });
 
@@ -195,31 +231,37 @@ export async function ask(db: Db, symbol: string, question: string): Promise<Ans
   let writtenBy: "data" | "model" = "data";
 
   if (llm.available()) {
+    // Every line the model may quote carries the citation number the reader will see, so a claim in the answer
+    // can be traced to the filing it came from - and anything it cites that is not here is dropped below.
+    const cite = (label: string) => {
+      const c = citations.find((x) => x.label === label);
+      return c ? `[${c.n}] ` : "";
+    };
     const context = [
       `COMPANY: ${d.company ?? d.symbol} (${d.symbol}), ${d.facts.industry ?? "industry unknown"}${d.facts.bank ? ", a lender" : ""}`,
-      `PRICE: ${rs(d.facts.price.value)} on ${d.facts.price.session}`,
-      `FAIR VALUE: ${rs(d.valuation.fairValue)} (range ${rs(d.valuation.range.bear)}–${rs(d.valuation.range.bull)}, confidence ${d.valuation.confidence}); margin of safety ${d.valuation.marginOfSafety}%; status ${d.valuation.status}`,
-      `MODELS: ${d.valuation.models.filter((m) => m.fairValue !== null).map((m) => `${m.label} ${rs(m.fairValue)} (${m.basis})`).join(" | ")}`,
-      `VERDICT: ${d.verdict}`,
-      `SCORES: ${d.scores.map((s) => `${s.label} ${s.score ?? "n/a"} — ${s.detail}`).join(" | ")}`,
-      `CONDITIONS: ${d.conditionsMet}. ${d.conditions.map((c) => `${c.label}: ${c.met === null ? "untestable" : c.met ? "met" : "not met"} (${c.detail})`).join(" | ")}`,
-      `RISK: ${d.risk.level}. ${d.risk.factors.map((r) => `${r.label}: ${r.detail}`).join(" | ")}`,
-      `QUARTERS: ${d.facts.quarters.slice(0, 6).map((q) => `${q.period} revenue ${cr(q.revenue)} profit ${cr(q.pat)} EPS ${rs(q.eps)}`).join(" | ")}`,
-      `BALANCE SHEET (${d.facts.balance.period}): debt ${cr(d.facts.balance.debtCr.value)}, cash ${cr(d.facts.balance.cashCr.value)}, D/E ${d.facts.balance.debtToEquity.value}`,
-      `CASH FLOW (${d.facts.cash.period}): operating ${cr(d.facts.cash.cfoCr.value)}, capex ${cr(d.facts.cash.capexCr.value)}, free ${cr(d.facts.cash.fcfCr.value)}`,
-      `SHAREHOLDING (${d.facts.shareholding.asOf}): promoter ${d.facts.shareholding.promoter.value}%, FII ${d.facts.shareholding.fii.value}%, DII ${d.facts.shareholding.dii.value}%`,
-      ...citations.map((c) => `[${c.n}] ${c.label} — ${c.source}${c.period ? `, ${c.period}` : ""}`),
-      ...known.map((p, i) => `KNOWLEDGE ${i + 1} (${p.kind}, ${p.when.slice(0, 10)}): ${p.title}. ${p.detail ?? ""}`),
-      ...found.map((p, i) => `FILING ${i + 1}: ${p.when.slice(0, 10)} ${p.exchange} — ${p.title}${p.detail ? `. ${p.detail.slice(0, 300)}` : ""}`),
+      `${cite("Price and market cap")}PRICE: ${rs(d.facts.price.value)} on ${d.facts.price.session}`,
+      `COMPUTED HERE, no citation needed - FAIR VALUE: ${rs(d.valuation.fairValue)} (range ${rs(d.valuation.range.bear)}–${rs(d.valuation.range.bull)}, confidence ${d.valuation.confidence}); margin of safety ${d.valuation.marginOfSafety}%; status ${d.valuation.status}`,
+      `MODELS: ${d.valuation.models.filter((m) => m.fairValue !== null).map((m) => `${m.label} ${rs(m.fairValue)}`).join(" | ")}`,
+      `COMPUTED HERE, no citation needed - VERDICT: ${d.verdict}`,
+      `SCORES: ${d.scores.map((x) => `${x.label} ${x.score ?? "n/a"}`).join(" | ")}`,
+      `CONDITIONS: ${d.conditionsMet}. ${d.conditions.map((c) => `${c.label}: ${c.met === null ? "untestable" : c.met ? "met" : "not met"}`).join(" | ")}`,
+      `COMPUTED HERE, no citation needed - RISK: ${d.risk.level}. ${d.risk.factors.filter((r) => r.level !== "low").map((r) => `${r.label}: ${clip(r.detail, 90)}`).join(" | ")}`,
+      `${cite("Quarterly results")}QUARTERS: ${d.facts.quarters.slice(0, 4).map((q) => `${q.period} revenue ${cr(q.revenue)} profit ${cr(q.pat)} EPS ${rs(q.eps)}`).join(" | ")}`,
+      `${cite("Balance sheet")}BALANCE SHEET (${d.facts.balance.period}): debt ${cr(d.facts.balance.debtCr.value)}, cash ${cr(d.facts.balance.cashCr.value)}, D/E ${d.facts.balance.debtToEquity.value}`,
+      `${cite("Cash flow statement")}CASH FLOW (${d.facts.cash.period}): operating ${cr(d.facts.cash.cfoCr.value)}, capex ${cr(d.facts.cash.capexCr.value)}, free ${cr(d.facts.cash.fcfCr.value)}`,
+      `${cite("Shareholding pattern")}SHAREHOLDING (${d.facts.shareholding.asOf}): promoter ${d.facts.shareholding.promoter.value}%, FII ${d.facts.shareholding.fii.value}%, DII ${d.facts.shareholding.dii.value}%`,
+      ...known.map((p, i) => `[${baseCount + i + 1}] ${p.kind}, ${p.when.slice(0, 10)}: ${p.title}. ${clip(p.detail ?? "", 320)}`),
+      ...found.map((p, i) => `[${baseCount + known.length + i + 1}] ${p.exchange} filing ${p.when.slice(0, 10)}: ${p.title}${p.detail ? `. ${clip(p.detail, 140)}` : ""}`),
     ].join("\n");
     const text = await llm.complete(question, context);
-    if (text) {
-      points = text.split(/\n+/).map((l) => l.replace(/^[-*•]\s*/, "").trim()).filter(Boolean);
+    const cleaned = text ? cleanPoints(text, new Set(citations.map((c) => c.n))) : [];
+    if (cleaned.length) {
+      points = cleaned;
       writtenBy = "model";
     }
   }
 
-  return {
+  const answer: Answer = {
     question,
     symbol: d.symbol,
     company: d.company,
@@ -237,4 +279,7 @@ export async function ask(db: Db, symbol: string, question: string): Promise<Ans
     writtenBy,
     asOf: new Date().toISOString(),
   };
+  if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value!);
+  cache.set(key, { at: Date.now(), answer });
+  return answer;
 }
