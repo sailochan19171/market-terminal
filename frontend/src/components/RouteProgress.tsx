@@ -27,6 +27,7 @@ const LABELS: [RegExp, (m: RegExpMatchArray, search: URLSearchParams) => string]
   [/^\/corporate-actions/, () => "Corporate actions"],
   [/^\/shareholding/, () => "Shareholding changes"],
   [/^\/insider/, () => "Insider trading"],
+  [/^\/research\/([^/]+)/, (m) => `${decodeURIComponent(m[1])} valuation`],
   [/^\/screens\/([^/]+)/, (m) => `${decodeURIComponent(m[1]).replaceAll("-", " ")} screen`],
   [/^\/screens/, () => "Stock screens"],
   [/^\/analyses/, () => "Completed analyses"],

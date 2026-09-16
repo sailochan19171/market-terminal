@@ -15,6 +15,7 @@ import { config } from "../config";
 import { Db, getDb, now, type Row } from "../db";
 import { logger } from "../log";
 import * as published from "../published";
+import { SCHEMA as KB_SCHEMA } from "../research/kb";
 import { siteCounts } from "../api/v2";
 import { buildPulse } from "../api/live";
 
@@ -52,6 +53,8 @@ export const SPECS: Spec[] = [
   { table: "index_value", mode: "date", column: "as_of" },
   { table: "nse_index_value", mode: "date", column: "as_of" },
   { table: "company_metrics", mode: "full", ignore: ["updated_at"] },
+  // Research documents: the hosted site searches these to answer questions.
+  { table: "kb_doc", mode: "stamp", column: "updated_at" },
   // New analysis versions (scheduled ones follow new results). Ids are assigned by the hosted database, since
   // visitors create versions there too; rows match on (company_key, version).
   { table: "analysis_version", mode: "stamp", column: "updated_at", omit: ["id"] },
@@ -176,6 +179,7 @@ export function publish(local: Db = getDb()): Record<string, number> {
   const sent: Record<string, number> = {};
   try {
     remote.exec(published.SCHEMA);
+    remote.exec(KB_SCHEMA);
     for (const spec of SPECS) {
       const t0 = Date.now();
       try {

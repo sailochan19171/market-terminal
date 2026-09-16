@@ -3,6 +3,7 @@ import { getDb } from "../db";
 import * as C from "./commands";
 import type { Step } from "./scheduler";
 import { isConfigured } from "./publish";
+import { buildAll } from "../research/kb";
 import path from "node:path";
 
 /** Publish in a separate process, like the half-hourly loop, so blocking Turso calls never stall this one. */
@@ -33,6 +34,8 @@ export function dailySteps(): Step[] {
     // Derived figures and stored analyses, so dashboards show the new session.
     { name: "metrics", run: () => C.metrics(db) },
     { name: "analyses", run: () => C.analyses(db) },
+    // Research documents follow the new figures, so answers quote the latest filings.
+    { name: "knowledge-base", run: async () => buildAll(db).docs },
     { name: "alerts", run: async () => (await C.alerts(db)).sent },
     // The hosted site gets the new session straight away rather than at the next half-hourly publish.
     ...(isConfigured() ? [{ name: "publish", run: async () => publishNow() }] : []),

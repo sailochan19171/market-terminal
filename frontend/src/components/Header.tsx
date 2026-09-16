@@ -2,7 +2,7 @@
 
 import clsx from "clsx";
 import {
-  Activity, BarChart3, Bell, BookOpen, Briefcase, Building2, CalendarDays, ChevronDown, CircleDollarSign, FileBarChart,
+  Activity, BarChart3, Scale, Bell, BookOpen, Briefcase, Building2, CalendarDays, ChevronDown, CircleDollarSign, FileBarChart,
   FileText, Flame, Gauge, Grid3x3, Layers, LineChart, ListFilter, Menu, Moon, PieChart, Search, Star, Sun, TrendingUp,
   UserCheck, Users, X, type LucideIcon,
 } from "lucide-react";
@@ -77,6 +77,7 @@ const MENU: MenuGroup[] = [
         { href: "/screens", label: "Stock screens", description: "Ready-made and custom screens", icon: ListFilter },
         { href: "/analyses", label: "Completed analyses", description: "Stored company analyses and versions", icon: Layers },
         { href: "/company/RELIANCE", label: "Company dashboard", description: "Summary and detailed analysis for any company", icon: BookOpen },
+        { href: "/research/RELIANCE", label: "Valuation research", description: "Fair value, margin of safety and buy zones", icon: Scale },
       ] },
     ],
   },

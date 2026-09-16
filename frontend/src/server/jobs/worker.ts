@@ -12,6 +12,7 @@ import * as STM from "../nse/statements";
 import * as sync from "../nse/companySync";
 import { rebuild } from "../core/metrics";
 import { runScheduled } from "../core/analysis";
+import { buildAll } from "../research/kb";
 import * as state from "./state";
 
 const log = logger("worker");
@@ -46,6 +47,8 @@ export function afterNewData(db: Db) {
   const t0 = Date.now();
   rebuild(db);
   try {
+    const docs = buildAll(db).docs;
+    if (docs) log.info(`knowledge base: ${docs} documents rebuilt`);
     const made = runScheduled(db);
     log.info(`metrics rebuilt in ${((Date.now() - t0) / 1000).toFixed(1)}s; scheduled analyses: ${made} new versions`);
   } catch (e) {

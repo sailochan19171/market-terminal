@@ -25,6 +25,7 @@ import { importCasData, importCsv, ImportError, latestSnapshot, saveWatchlist } 
 import { CasFormatError, CasPasswordError, parseCas } from "./core/cas";
 import { initFromSnapshot, publish, publishLive } from "./jobs/publish";
 import { progress as backfillProgress } from "./jobs/backfill";
+import { buildAll as buildKb, stats as kbStats } from "./research/kb";
 
 const log = logger("cli");
 
@@ -99,6 +100,7 @@ const HELP = `Indian market data pipeline (BSE + NSE)
   publish                        push new and changed rows to the hosted Turso database
   publish init --from FILE       start publishing from the snapshot that was uploaded to Turso
   publish live                   publish the live market pulse once
+  kb [--force] [--limit N]       rebuild the research knowledge base from the stored filings
 `;
 
 async function run(command: string, pos: string[], f: Flags, db: Db): Promise<number> {
@@ -330,6 +332,13 @@ async function run(command: string, pos: string[], f: Flags, db: Db): Promise<nu
       print(`nse full sync complete: ${total} rows`);
       return 0;
     }
+    case "kb": {
+      const out = buildKb(db, { force: Boolean(f.force), limit: num(f, "limit") });
+      print(`knowledge base: ${out.companies} companies, ${out.docs} documents`);
+      print(JSON.stringify(kbStats(db)));
+      return 0;
+    }
+
     case "publish": {
       if (pos[0] === "init") {
         const from = str(f, "from");
