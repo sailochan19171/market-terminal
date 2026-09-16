@@ -57,9 +57,20 @@ export const SYSTEM = [
   "Never tell the reader to buy, sell or hold, and never give a price target: describe what the figures show and let them judge.",
 ].join(" ");
 
-/** Ask the configured model. Returns null when no key is set or the call fails. */
-export async function complete(question: string, context: string): Promise<string | null> {
-  if (!available()) return null;
+/** What a call cost and what it produced, for the audit record and the cost metric. */
+export interface Completion {
+  text: string | null;
+  model: string;
+  promptTokens: number | null;
+  completionTokens: number | null;
+  latencyMs: number;
+  error?: string;
+}
+
+/** Ask the configured model. `text` is null when no key is set or the call fails; the rest still describes it. */
+export async function complete(question: string, context: string): Promise<Completion> {
+  const startedAt = Date.now();
+  if (!available()) return { text: null, model: "", promptTokens: null, completionTokens: null, latencyMs: 0, error: "no key configured" };
   const provider = config.LLM_PROVIDER;
   const kind = shape(provider);
   const model = config.LLM_MODEL || DEFAULT_MODEL[provider] || DEFAULT_MODEL.openai;
@@ -76,6 +87,14 @@ export async function complete(question: string, context: string): Promise<strin
           ...(REASONING.test(model) ? { reasoning_effort: "low" } : {}),
           messages: [{ role: "system", content: SYSTEM }, { role: "user", content: prompt }],
         };
+
+  const done = (text: string | null, usage?: { prompt_tokens?: number; completion_tokens?: number }, error?: string): Completion => ({
+    text, model,
+    promptTokens: usage?.prompt_tokens ?? null,
+    completionTokens: usage?.completion_tokens ?? null,
+    latencyMs: Date.now() - startedAt,
+    error,
+  });
 
   const base = config.LLM_BASE_URL || ENDPOINTS[provider];
   if (!base) throw new Error(`LLM_PROVIDER=${provider} is not a known host; set LLM_BASE_URL to its OpenAI-compatible endpoint`);
@@ -103,13 +122,14 @@ export async function complete(question: string, context: string): Promise<strin
       : kind === "gemini"
         ? data.candidates?.[0]?.content?.parts?.[0]?.text
         : data.choices?.[0]?.message?.content;
-    if (typeof answer === "string" && answer.trim()) return answer.trim();
+    const usage = data.usage ?? data.usageMetadata;
+    if (typeof answer === "string" && answer.trim()) return done(answer.trim(), usage);
     // An empty answer is nearly always a budget that ran out mid-thought; say so rather than failing silently.
     const reason = data.choices?.[0]?.finish_reason ?? data.stop_reason ?? "unknown";
     log.warn(`${model} returned no text (finish reason: ${reason})${reason === "length" ? "; raise MAX_TOKENS or lower the reasoning effort" : ""}`);
-    return null;
+    return done(null, usage, `empty reply (${reason})`);
   } catch (e) {
     log.warn(`model call failed: ${(e as Error).message}`);
-    return null;
+    return done(null, undefined, (e as Error).message);
   }
 }

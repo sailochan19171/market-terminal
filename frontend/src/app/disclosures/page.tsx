@@ -105,6 +105,11 @@ export default function DisclosuresPage() {
         </Card>
       ))}
       <p className="text-sm text-slate-500">
+        Every answer this platform generates is kept with its sources, and the measured grounding rate, the
+        helpfulness ratings and the human read-through are published on the{" "}
+        <Link href="/quality" className="text-indigo-700 underline underline-offset-2 dark:text-indigo-300">quality page</Link>.
+      </p>
+      <p className="text-sm text-slate-500">
         Questions about a figure? Open the filing linked beside it, or start from the{" "}
         <Link href="/filings" className="text-indigo-700 underline underline-offset-2 dark:text-indigo-300">announcements feed</Link>.
       </p>

@@ -6,6 +6,8 @@ import type { Db } from "../db";
 import { decide, type Decision } from "./decision";
 import { knowledge, passages, type Passage } from "./retrieve";
 import { search as searchDocuments } from "../docs/store";
+import { record } from "./audit";
+import { screen, type Screen } from "./screener";
 import * as llm from "./llm";
 
 export interface Citation { n: number; label: string; period?: string | null; url?: string | null; source: string }
@@ -26,6 +28,10 @@ export interface Answer {
   asOf: string;
   /** Set when a model is configured but could not be reached, so the page can say why the answer reads plainly. */
   note?: string;
+  /** The audit record this answer was stored as; the reader's rating is attached to it. */
+  id?: string;
+  /** Set when the question was a screen across the market rather than a question about one company. */
+  screen?: { plan: Screen; total: number; items: unknown[]; columns: Record<string, string> };
   /** The material the answer was built from. Only filled when asked for, by the checks that verify grounding. */
   context?: string;
 }
@@ -140,9 +146,12 @@ function namedElsewhere(db: Db, question: string, symbol: string, company: strin
 
   for (const phrase of phrases) {
     if (here.includes(phrase)) return { options: [] }; // they are asking about the company already in view
-    const rows = db.all<{ symbol: string; company: string }>(
+    const like = db.all<{ symbol: string; company: string }>(
       "SELECT symbol, company FROM company_metrics WHERE symbol = ? OR company LIKE ? ORDER BY market_cap_cr DESC NULLS LAST LIMIT 16",
       [phrase.replace(/\s+/g, "").toUpperCase(), `%${phrase}%`]);
+    // LIKE matches inside words: "carry" finds "North Eastern Carrying". A name has to match a whole word.
+    const whole = new RegExp(`\\b${phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+    const rows = like.filter((r) => r.symbol.toLowerCase() === phrase.replace(/\s+/g, "") || whole.test(r.company ?? ""));
     if (!rows.length || rows.length >= 16) continue; // no match, or a word so common it is not a name
     const exact = rows.find((r) => r.symbol.toLowerCase() === phrase.replace(/\s+/g, ""));
     const leading = rows.filter((r) => (r.company ?? "").toLowerCase().startsWith(phrase));
@@ -351,6 +360,11 @@ function compose(intent: Intent, d: Decision, found: Passage[]): { headline: str
 /** Answer one question about one company. */
 // The same question about the same company, before any new data has landed, has the same answer. Holding it for
 // an hour keeps a shared model quota for questions nobody has asked yet, and makes a repeated question instant.
+const headlineOf = (a: Answer) => [a.headline, ...a.points].join(" | ");
+
+/** A question about the market rather than about one company: it asks for several, or asks which. */
+const MARKET_WIDE = /\b(stocks|companies|shares|which|list|screen|top \d+|best|cheapest|show me)\b/i;
+
 const CACHE_TTL_MS = 60 * 60_000;
 const CACHE_MAX = 300;
 const cache = new Map<string, { at: number; answer: Answer }>();
@@ -378,8 +392,33 @@ export async function ask(db: Db, symbol: string, question: string, opts: AskOpt
       transcript ? `EARLIER IN THIS CONVERSATION:\n${transcript}` : "",
     ].filter(Boolean).join("\n");
     const said = await llm.complete(question, brief);
-    const lines = said ? cleanPoints(said, new Set()) : [];
-    return lines.length ? plain(lines[0], lines.slice(1)) : { ...plain(chat.headline, chat.points), writtenBy: "data" };
+    const lines = said.text ? cleanPoints(said.text, new Set()) : [];
+    const spoken = lines.length ? plain(lines[0], lines.slice(1)) : { ...plain(chat.headline, chat.points), writtenBy: "data" as const };
+    spoken.id = record(db, {
+      kind: "answer", symbol: sym, question, answer: [spoken.headline, ...spoken.points].join(" | "),
+      writtenBy: spoken.writtenBy, model: said.model, citations: [], context: brief,
+      promptTokens: said.promptTokens, completionTokens: said.completionTokens, latencyMs: said.latencyMs, error: said.error,
+    }) ?? undefined;
+    return spoken;
+  }
+
+  // "Which IT stocks are cheap?" is a screen across the market, not a question about the company on this page.
+  // It takes a plural framing as well as a filter, so "is it cheap?" on a company page stays a company question.
+  if (MARKET_WIDE.test(question)) {
+    const found = await screen(db, question, 12);
+    if (found.screen.understood || found.screen.sector) {
+      const shown = (found.items as { symbol?: string; company?: string }[]).slice(0, 5)
+        .map((r) => `${r.company ?? r.symbol} (${r.symbol})`);
+      const answer: Answer = {
+        question, symbol: sym, company: named ?? null,
+        headline: `${found.total.toLocaleString("en-IN")} compan${found.total === 1 ? "y" : "ies"} match: ${found.screen.filters.map((f) => f.label).join(", ") || "the sector alone"}${found.screen.sector ? ` in ${found.screen.sector}` : ""}.`,
+        points: shown.length ? [`Largest first: ${shown.join("; ")}.`, "The full list and the filters that produced it are below - change any of them and the list changes with it."] : ["Nothing on file matches every one of those conditions."],
+        citations: [], suggestions: STARTERS, writtenBy: "data", modelPoints: false,
+        asOf: new Date().toISOString(), screen: { plan: found.screen, total: found.total, items: found.items, columns: found.columns },
+      };
+      answer.id = record(db, { kind: "screen", symbol: null, question, answer: headlineOf(answer), writtenBy: "data" }) ?? undefined;
+      return answer;
+    }
   }
 
   // A question that names a different company is answered about that company, not about this page's.
@@ -447,6 +486,7 @@ export async function ask(db: Db, symbol: string, question: string, opts: AskOpt
   let writtenBy: "data" | "model" = "data";
   let modelPoints = false;
   let note: string | undefined;
+  let spend: llm.Completion | null = null;
 
   if (llm.available()) {
     // Every line the model may quote carries the citation number the reader will see, so a claim in the answer
@@ -484,9 +524,10 @@ ${transcript}
       ...read.map((r, i) => `[${docStart + i + 1}] from "${r.title}"${r.page ? `, page ${r.page}` : ""}: ${clip(r.text, 1200)}`),
     ].join("\n");
     shown = context;
-    const text = await llm.complete(question, context);
-    if (!text) note = "The model was busy, so this answer was written straight from the figures.";
-    const cleaned = text ? cleanPoints(text, new Set(citations.map((c) => c.n))) : [];
+    const said = await llm.complete(question, context);
+    spend = said;
+    if (!said.text) note = "The model was busy, so this answer was written straight from the figures.";
+    const cleaned = said.text ? cleanPoints(said.text, new Set(citations.map((c) => c.n))) : [];
     if (cleaned.length) {
       // The model's opening sentence answers the question asked; the rule-written headline answers whichever of
       // the thirteen intents the question was routed to, which is not always the same thing.
@@ -517,6 +558,15 @@ ${transcript}
     asOf: new Date().toISOString(),
     ...(opts.debug ? { context: shown } : {}),
   };
+  // Every generation is kept with what it was drawn from: the record the rules expect, and the measurement
+  // behind the grounding rate on the quality page.
+  answer.id = record(db, {
+    kind: "answer", symbol: d.symbol, question, answer: [headline, ...points].join(" | "), writtenBy,
+    model: spend?.model, citations, context: shown || undefined,
+    promptTokens: spend?.promptTokens, completionTokens: spend?.completionTokens,
+    latencyMs: spend?.latencyMs, error: spend?.error,
+  }) ?? undefined;
+
   if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value!);
   cache.set(key, { at: Date.now(), answer });
   return answer;

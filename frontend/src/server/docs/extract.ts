@@ -144,7 +144,7 @@ export async function extract(bytes: Uint8Array, filename = ""): Promise<Extract
   const head = new TextDecoder("latin1").decode(bytes.subarray(0, 8));
   if (head.startsWith("%PDF")) return fromPdf(bytes);
   // A .docx is a zip (PK\x03\x04) holding word/document.xml.
-  if (head.startsWith("PK") && ext !== "zip") return fromDocx(bytes);
+  if (head.startsWith("PK") && ext !== "zip") return fromDocx(bytes);
   if (["txt", "md", "csv", "json", "htm", "html", "xml"].includes(ext) || !ext) return fromText(bytes);
   if (ext === "doc") throw new UnreadableDocument("Old .doc files are not supported. Save it as .docx or PDF and upload again.");
   if (["xls", "xlsx", "ppt", "pptx"].includes(ext)) throw new UnreadableDocument(`.${ext} files are not supported yet. Export the pages you need as a PDF.`);

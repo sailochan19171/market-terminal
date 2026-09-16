@@ -21,10 +21,11 @@ async function main() {
   }
 
   console.log("\n1. Calling the model with a two-line context…");
-  const reply = await complete(
+  const said = await complete(
     "What was revenue, and what does the filing say about it?",
     "[1] Example Ltd results for Q1 FY27 (quarter to 2026-06-30): revenue Rs 1,250 Cr, net profit Rs 180 Cr.\n[2] Example Ltd filing 2026-07-14: board approved the results.",
   );
+  const reply = said.text;
   if (!reply) {
     console.log("   FAILED - the call returned nothing. Check the model name and the key; the warning above says why.");
     process.exit(1);
