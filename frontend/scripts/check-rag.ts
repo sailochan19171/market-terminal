@@ -5,7 +5,7 @@
 // about a real company and checks both: the answer must mention what the question was about, and every number
 // it prints must appear in the context the model was given.
 //
-//   npx tsx scripts/check-rag.ts            # ITC
+//   npx tsx scripts/check-rag.ts            # ITC (one company: each question costs model tokens)
 //   npx tsx scripts/check-rag.ts TCS VEDL
 import { Db } from "../src/server/db";
 import { ask } from "../src/server/research/answer";

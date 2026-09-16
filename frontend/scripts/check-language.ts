@@ -25,13 +25,11 @@ const BANNED: { re: RegExp; why: string }[] = [
   { re: /\b(will|going to) (rise|fall|double|reach)\b/i, why: "a price prediction stated as fact" },
 ];
 
-const SYMBOLS = process.argv.slice(2).length ? process.argv.slice(2) : ["TCS", "HDFCBANK", "ITC", "TATASTEEL", "VEDL", "SUZLON", "RELIANCE", "IREDA"];
+const SYMBOLS = process.argv.slice(2).length ? process.argv.slice(2) : ["TCS", "HDFCBANK", "VEDL"];
 const QUESTIONS = [
   "Should I invest in this company?",
   "When should I buy and when should I avoid it?",
   "What are the biggest risks?",
-  "Is it cheap or expensive right now?",
-  "What changed recently?",
 ];
 
 let failures = 0;

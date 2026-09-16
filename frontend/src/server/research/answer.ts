@@ -23,6 +23,8 @@ export interface Answer {
   /** True when the supporting points are the model's words too; false when only the opening line is. */
   modelPoints: boolean;
   asOf: string;
+  /** Set when a model is configured but could not be reached, so the page can say why the answer reads plainly. */
+  note?: string;
   /** The material the answer was built from. Only filled when asked for, by the checks that verify grounding. */
   context?: string;
 }
@@ -107,6 +109,49 @@ export function smallTalk(question: string, company: string): { headline: string
     };
   }
   return null;
+}
+
+// Words that look like a company name but are not: without this, "profit", "growth" or "power" would send a
+// question about the company in view off to some other listing.
+const NOT_A_NAME = new Set([
+  "what", "when", "where", "which", "why", "how", "does", "did", "will", "with", "from", "that", "this", "these", "those",
+  "about", "over", "past", "last", "year", "years", "quarter", "quarterly", "month", "months", "growth", "growing",
+  "profit", "profits", "revenue", "sales", "margin", "margins", "debt", "cash", "flow", "dividend", "dividends",
+  "share", "shares", "price", "value", "valuation", "risk", "risks", "company", "business", "stock", "market",
+  "please", "tell", "show", "give", "much", "many", "good", "better", "than", "into", "their", "there", "them",
+  "report", "results", "result", "earnings", "compare", "against", "between", "recent", "latest", "history",
+]);
+
+/**
+ * A different listed company named in the question - "profit of tata", asked on the Reliance page.
+ *
+ * Two-word phrases are tried before single words, so "hdfc bank" finds the bank rather than the three HDFC
+ * companies. One clear match is answered directly; a name that fits several ("tata") asks which was meant.
+ */
+function namedElsewhere(db: Db, question: string, symbol: string, company: string): { pick?: { symbol: string; company: string }; options: { symbol: string; company: string }[] } {
+  const here = `${symbol} ${company}`.toLowerCase();
+  const words = (question.match(/[A-Za-z][A-Za-z&.'-]{2,}/g) ?? []).map((w) => w.toLowerCase());
+  const phrases: string[] = [];
+  for (let i = 0; i < words.length; i++) {
+    if (i + 1 < words.length && !NOT_A_NAME.has(words[i])) phrases.push(`${words[i]} ${words[i + 1]}`);
+  }
+  for (const w of words) if (w.length >= 4 && !NOT_A_NAME.has(w)) phrases.push(w);
+
+  for (const phrase of phrases) {
+    if (here.includes(phrase)) return { options: [] }; // they are asking about the company already in view
+    const rows = db.all<{ symbol: string; company: string }>(
+      "SELECT symbol, company FROM company_metrics WHERE symbol = ? OR company LIKE ? ORDER BY market_cap_cr DESC NULLS LAST LIMIT 16",
+      [phrase.replace(/\s+/g, "").toUpperCase(), `%${phrase}%`]);
+    if (!rows.length || rows.length >= 16) continue; // no match, or a word so common it is not a name
+    const exact = rows.find((r) => r.symbol.toLowerCase() === phrase.replace(/\s+/g, ""));
+    const leading = rows.filter((r) => (r.company ?? "").toLowerCase().startsWith(phrase));
+    if (exact) return { pick: exact, options: rows };
+    if (leading.length === 1) return { pick: leading[0], options: rows };
+    if (leading.length > 1) return { options: leading.slice(0, 6) };
+    if (rows.length === 1) return { pick: rows[0], options: rows };
+    return { options: rows.slice(0, 6) };
+  }
+  return { options: [] };
 }
 
 const pct = (v: number | null, d = 1) => (v === null ? "Data unavailable" : `${v > 0 ? "+" : ""}${v.toFixed(d)}%`);
@@ -315,6 +360,22 @@ export async function ask(db: Db, symbol: string, question: string, opts: AskOpt
     return lines.length ? plain(lines[0], lines.slice(1)) : { ...plain(chat.headline, chat.points), writtenBy: "data" };
   }
 
+  // A question that names a different company is answered about that company, not about this page's.
+  const elsewhere = namedElsewhere(db, question, sym, named ?? sym);
+  if (elsewhere.pick && elsewhere.pick.symbol !== sym) {
+    const moved = await ask(db, elsewhere.pick.symbol, question, { ...opts, history: [] });
+    return { ...moved, headline: `You asked about ${elsewhere.pick.company}, not ${named ?? sym}. ${moved.headline}` };
+  }
+  if (elsewhere.options.length > 1) {
+    return {
+      question, symbol: sym, company: named ?? null,
+      headline: `Which company did you mean? This page is ${named ?? sym}.`,
+      points: elsewhere.options.map((c) => `${c.company} (${c.symbol})`),
+      citations: [], suggestions: elsewhere.options.slice(0, 4).map((c) => `How did ${c.company} do last quarter?`),
+      writtenBy: "data", modelPoints: false, asOf: new Date().toISOString(),
+    };
+  }
+
   const d = decide(db, symbol);
   const key = `${d.symbol}|${d.facts.price.session ?? ""}|${transcript.length}|${question.trim().toLowerCase().replace(/\s+/g, " ")}`;
   const hit = cache.get(key);
@@ -323,8 +384,8 @@ export async function ask(db: Db, symbol: string, question: string, opts: AskOpt
   const intent = intentOf(question);
   // "And its debt?" carries no search terms of its own, so a short follow-up searches with the question before it.
   const retrieveWith = question.trim().split(/\s+/).length <= 4 && history.length ? `${history.at(-1)!.q} ${question}` : question;
-  const found = passages(db, d.symbol, bseCode ? String(bseCode) : null, retrieveWith, 5);
-  const known = knowledge(db, d.symbol, retrieveWith, 4);
+  const found = passages(db, d.symbol, bseCode ? String(bseCode) : null, retrieveWith, 4);
+  const known = knowledge(db, d.symbol, retrieveWith, 3);
 
   const citations = baseCitations(d);
   const baseCount = citations.length;
@@ -337,6 +398,7 @@ export async function ask(db: Db, symbol: string, question: string, opts: AskOpt
   let points = written.points;
   let writtenBy: "data" | "model" = "data";
   let modelPoints = false;
+  let note: string | undefined;
 
   if (llm.available()) {
     // Every line the model may quote carries the citation number the reader will see, so a claim in the answer
@@ -362,18 +424,18 @@ ${transcript}
       `COMPUTED HERE, no citation needed - FAIR VALUE: ${rs(d.valuation.fairValue)} (range ${rs(d.valuation.range.bear)}–${rs(d.valuation.range.bull)}, confidence ${d.valuation.confidence}); margin of safety ${d.valuation.marginOfSafety}%; status ${d.valuation.status}`,
       `MODELS: ${d.valuation.models.filter((m) => m.fairValue !== null).map((m) => `${m.label} ${rs(m.fairValue)}`).join(" | ")}`,
       `COMPUTED HERE, no citation needed - VERDICT: ${d.verdict}`,
-      `SCORES: ${d.scores.map((x) => `${x.label} ${x.score ?? "n/a"}`).join(" | ")}`,
-      `CONDITIONS: ${d.conditionsMet}. ${d.conditions.map((c) => `${c.label}: ${c.met === null ? "untestable" : c.met ? "met" : "not met"}`).join(" | ")}`,
+      `CONDITIONS: ${d.conditionsMet}`,
       `COMPUTED HERE, no citation needed - RISK: ${d.risk.level}. ${d.risk.factors.filter((r) => r.level !== "low").map((r) => `${r.label}: ${clip(r.detail, 90)}`).join(" | ")}`,
-      `${cite("Quarterly results")}QUARTERS: ${f.quarters.slice(0, 4).map((q) => `${q.period} revenue ${cr(q.revenue)} profit ${cr(q.pat)} EPS ${rs(q.eps)}`).join(" | ")}`,
+      `${cite("Quarterly results")}QUARTERS: ${f.quarters.slice(0, 3).map((q) => `${q.period} revenue ${cr(q.revenue)} profit ${cr(q.pat)} EPS ${rs(q.eps)}`).join(" | ")}`,
       `${cite("Balance sheet")}BALANCE SHEET (${f.balance.period}): debt ${cr(f.balance.debtCr.value)}, cash ${cr(f.balance.cashCr.value)}, D/E ${f.balance.debtToEquity.value}, interest cover ${f.balance.interestCover.value ?? "n/a"}`,
       `${cite("Cash flow statement")}CASH FLOW (${f.cash.period}): operating ${cr(f.cash.cfoCr.value)}, capex ${cr(f.cash.capexCr.value)}, free ${cr(f.cash.fcfCr.value)}, profit converted to cash ${pct(f.cash.conversion.value)}`,
       `${cite("Shareholding pattern")}SHAREHOLDING (${f.shareholding.asOf}): promoter ${f.shareholding.promoter.value}%, FII ${f.shareholding.fii.value}%, DII ${f.shareholding.dii.value}%, public ${f.shareholding.public.value}%; promoter change ${f.shareholding.promoterChange.value ?? "n/a"} points on the quarter`,
-      ...known.map((p, i) => `[${baseCount + i + 1}] ${p.kind}, ${p.when.slice(0, 10)}: ${p.title}. ${clip(p.detail ?? "", 320)}`),
-      ...found.map((p, i) => `[${baseCount + known.length + i + 1}] ${p.exchange} filing ${p.when.slice(0, 10)}: ${p.title}${p.detail ? `. ${clip(p.detail, 140)}` : ""}`),
+      ...known.map((p, i) => `[${baseCount + i + 1}] ${p.kind}, ${p.when.slice(0, 10)}: ${p.title}. ${clip(p.detail ?? "", 220)}`),
+      ...found.map((p, i) => `[${baseCount + known.length + i + 1}] ${p.exchange} filing ${p.when.slice(0, 10)}: ${p.title}${p.detail ? `. ${clip(p.detail, 100)}` : ""}`),
     ].join("\n");
     shown = context;
     const text = await llm.complete(question, context);
+    if (!text) note = "The model was busy, so this answer was written straight from the figures.";
     const cleaned = text ? cleanPoints(text, new Set(citations.map((c) => c.n))) : [];
     if (cleaned.length) {
       // The model's opening sentence answers the question asked; the rule-written headline answers whichever of
@@ -397,6 +459,7 @@ ${transcript}
     suggestions: STARTERS,
     writtenBy,
     modelPoints,
+    note,
     asOf: new Date().toISOString(),
     ...(opts.debug ? { context: shown } : {}),
   };

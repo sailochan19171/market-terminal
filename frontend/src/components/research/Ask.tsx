@@ -10,7 +10,7 @@ import { api } from "@/lib/api";
 import { dateOnly } from "@/lib/format";
 
 interface Citation { n: number; label: string; period?: string | null; url?: string | null; source: string }
-interface Answer { question: string; headline: string; points: string[]; citations: Citation[]; suggestions: string[]; writtenBy: "data" | "model" }
+interface Answer { question: string; headline: string; points: string[]; citations: Citation[]; suggestions: string[]; writtenBy: "data" | "model"; note?: string }
 
 const STARTERS = [
   "Should I invest in this company?",
@@ -85,7 +85,7 @@ export function Ask({ symbol, company }: { symbol: string; company: string | nul
                           [{c.n}] {c.label.slice(0, 44)}{c.period ? ` · ${dateOnly(c.period)}` : ""}
                         </span>
                   ))}
-                  <span className="ml-auto text-[11px] text-slate-400">{a.writtenBy === "model" ? "phrased by the configured model from these sources" : "written from the data"}</span>
+                  <span className="ml-auto text-[11px] text-slate-400" title={a.note ?? ""}>{a.writtenBy === "model" ? "phrased by the configured model from these sources" : a.note ? "the model was busy - written from the data" : "written from the data"}</span>
                 </div>
               )}
             </div>
