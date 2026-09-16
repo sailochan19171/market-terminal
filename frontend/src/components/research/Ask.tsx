@@ -37,7 +37,12 @@ export function Ask({ symbol, company }: { symbol: string; company: string | nul
     setError(null);
     setQuestion("");
     try {
-      const answer = await api<Answer>(`/api/v2/company/${encodeURIComponent(symbol)}/ask?q=${encodeURIComponent(text)}`);
+      // Send the conversation so far, so "and its debt?" is understood as a follow-up rather than a new question.
+      const history = thread.slice(-4).map((t) => ({ q: t.question, a: [t.headline, ...t.points].join(" ") }));
+      const answer = await api<Answer>(`/api/v2/company/${encodeURIComponent(symbol)}/ask`, {
+        method: "POST",
+        body: JSON.stringify({ q: text, history }),
+      });
       setThread((t) => [...t, answer]);
       requestAnimationFrame(() => box.current?.scrollTo({ top: box.current.scrollHeight, behavior: "smooth" }));
     } catch (e) {

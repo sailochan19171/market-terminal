@@ -8,6 +8,9 @@ import { knowledge, passages, type Passage } from "./retrieve";
 import * as llm from "./llm";
 
 export interface Citation { n: number; label: string; period?: string | null; url?: string | null; source: string }
+/** One exchange already in this conversation, so a follow-up question knows what it refers to. */
+export interface Turn { q: string; a: string }
+export interface AskOptions { debug?: boolean; history?: Turn[] }
 export interface Answer {
   question: string;
   symbol: string;
@@ -136,9 +139,11 @@ function baseCitations(d: Decision): Citation[] {
  * removed rather than shown, which is the whole basis on which a reader is asked to trust the answer.
  */
 export function cleanPoints(text: string, valid: Set<number>): string[] {
-  // A model asked for bullets sometimes runs them together on one line with dashes; split those back out.
+  // A model asked for bullets sometimes runs them together on one line with dashes, or answers in a single
+  // paragraph. Both are split back into readable lines rather than shown as a wall of text.
   return text.split(/\n+/)
     .flatMap((l) => (l.length > 160 && (l.match(/\s[-–—]\s+(?=[A-Z0-9₹])/g) ?? []).length >= 2 ? l.split(/\s[-–—]\s+(?=[A-Z0-9₹])/) : [l]))
+    .flatMap((l, _i, all) => (all.length === 1 && l.length > 300 ? l.split(/(?<=[.!?])\s+(?=[A-Z₹])/) : [l]))
     .map((line) => line
       .replace(/^\s*(?:[-*•‣]|\d+[.)])\s*/, "")            // bullet or numbered list marker
       .replace(/[【〔［]\s*(\d+)\s*[】〕］]/g, "[$1]")         // full-width brackets the model sometimes emits
@@ -283,26 +288,43 @@ const CACHE_TTL_MS = 60 * 60_000;
 const CACHE_MAX = 300;
 const cache = new Map<string, { at: number; answer: Answer }>();
 
-export async function ask(db: Db, symbol: string, question: string, opts: { debug?: boolean } = {}): Promise<Answer> {
-  // A greeting or a question about the assistant itself is answered before any of the analysis runs.
+export async function ask(db: Db, symbol: string, question: string, opts: AskOptions = {}): Promise<Answer> {
   const sym = symbol.toUpperCase();
   const named = db.scalar<string>("SELECT company FROM company_metrics WHERE symbol = ? OR bse_code = ?", [sym, sym]);
+  const history = (opts.history ?? []).slice(-4);
+  const transcript = history.map((t) => `Reader: ${clip(t.q, 200)}\nYou: ${clip(t.a, 400)}`).join("\n");
+
+  // A greeting, or a question about the assistant itself. With a model configured it answers these in its own
+  // words from a short brief - no valuation is run and no figures are fetched, so it costs almost nothing.
   const chat = smallTalk(question, named ?? sym);
   if (chat) {
-    return {
-      question, symbol: sym, company: named ?? null, headline: chat.headline, points: chat.points,
-      citations: [], suggestions: STARTERS, writtenBy: "data", modelPoints: false, asOf: new Date().toISOString(),
-    };
+    const plain = (headline: string, points: string[]): Answer => ({
+      question, symbol: sym, company: named ?? null, headline, points,
+      citations: [], suggestions: STARTERS, writtenBy: llm.available() ? "model" : "data",
+      modelPoints: false, asOf: new Date().toISOString(),
+    });
+    if (!llm.available()) return { ...plain(chat.headline, chat.points), writtenBy: "data" };
+    const brief = [
+      `COMPANY IN VIEW: ${named ?? sym}`,
+      `WHAT YOU CAN ANSWER: ${WHAT_IT_ANSWERS.join(" ")}`,
+      "WHAT YOU ARE: the research assistant on Market Terminal, which reads this company's own filings to NSE and BSE. You have no news, no opinions and no knowledge of anything outside those filings.",
+      transcript ? `EARLIER IN THIS CONVERSATION:\n${transcript}` : "",
+    ].filter(Boolean).join("\n");
+    const said = await llm.complete(question, brief);
+    const lines = said ? cleanPoints(said, new Set()) : [];
+    return lines.length ? plain(lines[0], lines.slice(1)) : { ...plain(chat.headline, chat.points), writtenBy: "data" };
   }
 
   const d = decide(db, symbol);
-  const key = `${d.symbol}|${d.facts.price.session ?? ""}|${question.trim().toLowerCase().replace(/\s+/g, " ")}`;
+  const key = `${d.symbol}|${d.facts.price.session ?? ""}|${transcript.length}|${question.trim().toLowerCase().replace(/\s+/g, " ")}`;
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.answer;
   const bseCode = db.scalar<string>("SELECT bse_code FROM company_metrics WHERE symbol = ?", [d.symbol]);
   const intent = intentOf(question);
-  const found = passages(db, d.symbol, bseCode ? String(bseCode) : null, question, 5);
-  const known = knowledge(db, d.symbol, question, 4);
+  // "And its debt?" carries no search terms of its own, so a short follow-up searches with the question before it.
+  const retrieveWith = question.trim().split(/\s+/).length <= 4 && history.length ? `${history.at(-1)!.q} ${question}` : question;
+  const found = passages(db, d.symbol, bseCode ? String(bseCode) : null, retrieveWith, 5);
+  const known = knowledge(db, d.symbol, retrieveWith, 4);
 
   const citations = baseCitations(d);
   const baseCount = citations.length;
@@ -325,6 +347,9 @@ export async function ask(db: Db, symbol: string, question: string, opts: { debu
     };
     const f = d.facts;
     const context = [
+      transcript ? `EARLIER IN THIS CONVERSATION:
+${transcript}
+` : "",
       `COMPANY: ${d.company ?? d.symbol} (${d.symbol}), ${f.industry ?? "industry unknown"}${f.bank ? ", a lender" : ""}; market cap ${cr(f.marketCapCr.value)}`,
       `${cite("Price and market cap")}PRICE: ${rs(f.price.value)} on ${f.price.session}; return 1 month ${pct(f.returns.ret1m.value)}, 1 year ${pct(f.returns.ret1y.value)}`,
       // The question decides what a reader needs, so the figures they might ask about are all here: growth,
