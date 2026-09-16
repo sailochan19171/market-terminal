@@ -74,6 +74,13 @@ export const config = {
   LLM_MODEL: s("LLM_MODEL"),
   LLM_BASE_URL: s("LLM_BASE_URL"),
 
+  /** Optional embeddings for the document library; without a key, documents are searched by words alone.
+   *  EMBED_PROVIDER: openai | gemini | voyage, or any OpenAI-compatible host via EMBED_BASE_URL. */
+  EMBED_PROVIDER: s("EMBED_PROVIDER", "openai").toLowerCase(),
+  EMBED_API_KEY: s("EMBED_API_KEY"),
+  EMBED_MODEL: s("EMBED_MODEL"),
+  EMBED_BASE_URL: s("EMBED_BASE_URL"),
+
   /** "turso" on the hosted site: read and write the Turso database instead of the local file. */
   DB_MODE: s("MARKET_DB", "local").toLowerCase(),
   TURSO_DATABASE_URL: s("TURSO_DATABASE_URL"),

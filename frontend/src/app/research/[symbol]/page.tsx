@@ -6,6 +6,7 @@ import Link from "next/link";
 import { use } from "react";
 import { PageLoader } from "@/components/PageLoader";
 import { Ask } from "@/components/research/Ask";
+import { Library } from "@/components/research/Library";
 import { RiskFlags } from "@/components/research/RiskFlags";
 import { VerdictPanel } from "@/components/research/VerdictPanel";
 import { WhyMoving } from "@/components/research/WhyMoving";
@@ -283,6 +284,8 @@ export default function ResearchPage({ params }: { params: Promise<{ symbol: str
           </CardBody>
         </Card>
       )}
+
+      <Library symbol={data.symbol} company={data.company} />
 
       <Ask symbol={data.symbol} company={data.company} />
 

@@ -5,6 +5,7 @@
 import type { Db } from "../db";
 import { decide, type Decision } from "./decision";
 import { knowledge, passages, type Passage } from "./retrieve";
+import { search as searchDocuments } from "../docs/store";
 import * as llm from "./llm";
 
 export interface Citation { n: number; label: string; period?: string | null; url?: string | null; source: string }
@@ -422,16 +423,27 @@ export async function ask(db: Db, symbol: string, question: string, opts: AskOpt
   const retrieveWith = question.trim().split(/\s+/).length <= 4 && history.length ? `${history.at(-1)!.q} ${question}` : question;
   const found = passages(db, d.symbol, bseCode ? String(bseCode) : null, retrieveWith, 4);
   const known = knowledge(db, d.symbol, retrieveWith, 3);
+  // Whatever has been read into the document library for this company - filings, annual reports, uploads.
+  const read = await searchDocuments(db, d.symbol, retrieveWith, 3).catch(() => []);
 
   const citations = baseCitations(d);
   const baseCount = citations.length;
   for (const p of known) citations.push({ n: citations.length + 1, label: p.title.slice(0, 90), source: `knowledge base (${p.kind})`, period: p.when.slice(0, 10), url: p.url });
   for (const p of found) citations.push({ n: citations.length + 1, label: `${p.exchange} filing: ${p.title.slice(0, 90)}`, source: `${p.exchange} announcement`, period: p.when.slice(0, 10), url: p.url });
+  const docStart = citations.length;
+  for (const r of read) citations.push({ n: citations.length + 1, label: `${r.title.slice(0, 80)}${r.page ? `, page ${r.page}` : ""}`, source: r.kind === "upload" ? "document you uploaded" : "document read in full", period: null, url: r.url });
 
   const written = compose(intent, d, found);
   let shown = ""; // the context, kept only for the grounding checks
   let headline = written.headline;
-  let points = written.points;
+  // What the documents themselves say comes first, quoted and cited. Without this an uploaded report would be
+  // invisible whenever no model is available, which is exactly when a reader needs the quote most.
+  let points = read.length
+    ? [
+      ...read.slice(0, 2).map((r, i) => `From ${r.title}${r.page ? `, page ${r.page}` : ""}: "${r.snippet}" [${docStart + i + 1}]`),
+      ...written.points.slice(0, 3),
+    ]
+    : written.points;
   let writtenBy: "data" | "model" = "data";
   let modelPoints = false;
   let note: string | undefined;
@@ -468,6 +480,8 @@ ${transcript}
       `${cite("Shareholding pattern")}SHAREHOLDING (${f.shareholding.asOf}): promoter ${f.shareholding.promoter.value}%, FII ${f.shareholding.fii.value}%, DII ${f.shareholding.dii.value}%, public ${f.shareholding.public.value}%; promoter change ${f.shareholding.promoterChange.value ?? "n/a"} points on the quarter`,
       ...known.map((p, i) => `[${baseCount + i + 1}] ${p.kind}, ${p.when.slice(0, 10)}: ${p.title}. ${clip(p.detail ?? "", 220)}`),
       ...found.map((p, i) => `[${baseCount + known.length + i + 1}] ${p.exchange} filing ${p.when.slice(0, 10)}: ${p.title}${p.detail ? `. ${clip(p.detail, 100)}` : ""}`),
+      // Passages read out of the documents themselves: this is where anything the company actually wrote appears.
+      ...read.map((r, i) => `[${docStart + i + 1}] from "${r.title}"${r.page ? `, page ${r.page}` : ""}: ${clip(r.text, 1200)}`),
     ].join("\n");
     shown = context;
     const text = await llm.complete(question, context);
@@ -480,7 +494,11 @@ ${transcript}
       modelPoints = points.length > 0;
       // A one-line answer keeps the written detail beneath it - unless that line says the record does not answer
       // the question, in which case stapling a company summary underneath would contradict it.
-      if (!points.length) points = /do not answer|does not answer|cannot|can't|not in the|no information|outside/i.test(headline) ? [] : written.points;
+      // A one-line answer keeps the written detail beneath it only when that detail is still on the subject:
+      // not after a refusal, not when the answer came out of a document, and not when it already said enough.
+      const standsAlone = read.length > 0 || headline.length > 140
+        || /do not answer|does not answer|cannot|can't|not in the|no information|outside/i.test(headline);
+      if (!points.length) points = standsAlone ? [] : written.points;
       writtenBy = "model";
     }
   }
