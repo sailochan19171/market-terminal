@@ -62,7 +62,7 @@ const f = (value: number | null, unit?: Fact["unit"], period?: string | null, so
 /** Quarterly results on the company's preferred basis, newest first. */
 function quarterRows(db: Db, symbol: string, limit = 20): Row[] {
   const rows = db.all("SELECT period_end, consolidated, revenue, pat_owners, pat, eps_basic, net_margin, gross_profit, pbt, finance_costs, depreciation, borrowings, equity, report_format, xbrl_url "
-    + "FROM nse_fundamental WHERE symbol = ? AND quality IN ('ok','suspect') ORDER BY period_end DESC, consolidated DESC LIMIT ?", [symbol, limit * 2]);
+    + "FROM nse_fundamental WHERE symbol = ? AND quality IN ('ok','suspect') ORDER BY period_end DESC, CASE lower(consolidated) WHEN 'consolidated' THEN 0 ELSE 1 END LIMIT ?", [symbol, limit * 2]);
   const seen = new Set<string>();
   return rows.filter((q) => (seen.has(q.period_end) ? false : (seen.add(q.period_end), true))).slice(0, limit);
 }

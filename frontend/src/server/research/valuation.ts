@@ -86,7 +86,7 @@ const isBank = (metrics: Row, format: string | null) =>
 function quarters(db: Db, symbol: string, limit = 24): Row[] {
   return db.all(
     "SELECT f.period_end, f.consolidated, f.revenue, f.pbt, f.pat_owners, f.pat, f.eps_basic, f.depreciation, f.finance_costs, f.shares, f.equity, f.borrowings, f.total_assets, f.report_format, f.quality, f.xbrl_url "
-    + "FROM nse_fundamental f WHERE f.symbol = ? AND f.quality IN ('ok', 'suspect') ORDER BY f.period_end DESC, f.consolidated DESC LIMIT ?", [symbol, limit]);
+    + "FROM nse_fundamental f WHERE f.symbol = ? AND f.quality IN ('ok', 'suspect') ORDER BY f.period_end DESC, CASE lower(f.consolidated) WHEN 'consolidated' THEN 0 ELSE 1 END LIMIT ?", [symbol, limit]);
 }
 
 /** One row per period on the preferred basis (consolidated when the company reports it). */

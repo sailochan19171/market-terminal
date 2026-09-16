@@ -62,7 +62,7 @@ const FINANCIAL = /bank|financial|finance|nbfc|insur/i;
 /** Quarterly EPS on one basis, newest first, for the growth histories. */
 function epsQuarters(db: Db, symbol: string): { period: string; eps: number | null }[] {
   const rows = db.all<Row>(
-    "SELECT period_end, consolidated, eps_basic FROM nse_fundamental WHERE symbol = ? AND quality IN ('ok','suspect') ORDER BY period_end DESC, consolidated DESC LIMIT 60", [symbol]);
+    "SELECT period_end, consolidated, eps_basic FROM nse_fundamental WHERE symbol = ? AND quality IN ('ok','suspect') ORDER BY period_end DESC, CASE lower(consolidated) WHEN 'consolidated' THEN 0 ELSE 1 END LIMIT 60", [symbol]);
   const seen = new Set<string>();
   return rows.filter((r) => (seen.has(r.period_end) ? false : (seen.add(r.period_end), true)))
     .map((r) => ({ period: String(r.period_end), eps: toNum(r.eps_basic) }));

@@ -38,7 +38,7 @@ const RULES: [Intent, RegExp][] = [
   ["cash", /cash flow|cashflow|free cash|fcf|capex|operating cash/i],
   ["shareholding", /sharehold|promoter|fii|dii|institution|pledge|holding/i],
   ["dividend", /dividend|payout|yield/i],
-  ["news", /news|announce|filing|filed?|disclosure|update|happening|happened|exchange/i],
+  ["news", /news|announce|filing|\bfiled?\b|disclosure|update|happening|happened|exchange/i],
   ["changed", /what changed|recent|latest|since last|new/i],
   ["invest", /invest|should i|good stock|worth buying|opportunity|recommend/i],
 ];
@@ -46,6 +46,65 @@ const RULES: [Intent, RegExp][] = [
 /** Which of the thirteen written answers a question calls for. Exported so the routing can be tested. */
 export const intentOf = (q: string): Intent => RULES.find(([, re]) => re.test(q))?.[0] ?? "overview";
 export type { Intent };
+
+/** The questions offered as chips under the box. */
+const STARTERS = [
+  "Is it undervalued right now?",
+  "When should I buy, and when should I avoid it?",
+  "What are the biggest risks?",
+  "How did the last quarter go?",
+  "How much debt does it carry?",
+  "What changed recently?",
+];
+
+const WHAT_IT_ANSWERS = [
+  "Results and growth: revenue, profit, margins, earnings per share, quarter by quarter.",
+  "Balance sheet and cash: debt, cash, operating and free cash flow.",
+  "Ownership: promoter, institutional and public holding, and how it has moved.",
+  "Dividends and corporate actions, valuation against its own history and its peers, and recent exchange filings.",
+];
+
+/**
+ * Not every message is a question about the company.
+ *
+ * A greeting, a question about what this thing is, or something off the subject entirely used to fall through
+ * to the catch-all and return a full investment overview - the same wall of figures whatever was typed. These
+ * get an answer of their own, without touching the model or the valuation machinery.
+ */
+export function smallTalk(question: string, company: string): { headline: string; points: string[] } | null {
+  const q = question.trim().toLowerCase().replace(/[!?.,]+$/g, "");
+  if (!q) return null;
+
+  if (/^(hi|hii+|hey+|hello+|yo|namaste|namaskar|good (morning|afternoon|evening)|greetings)\b/.test(q) && q.length < 30) {
+    return {
+      headline: `Ask me anything about ${company}, and I will answer from its filings.`,
+      points: WHAT_IT_ANSWERS,
+    };
+  }
+  // Typed quickly and often misspelled ("were are you from"), so the pattern is deliberately loose.
+  if (/\b(who|what|where|were|wher|hu)\s+(are|r|is)\s+(you|u|your)\b|\bwhat can (you|u) do\b|\bare (you|u) (an? )?(ai|bot|robot|human|chatgpt|gemini|real)\b|\byour name\b|\bhow do (you|u) work\b|\bwho (made|built|created) (you|u)\b/.test(q)) {
+    return {
+      headline: `I am Market Terminal's research assistant. I answer only from ${company}'s own filings to NSE and BSE, and I show the source for every figure.`,
+      points: [
+        "I read this company's results, balance sheets, cash-flow statements, shareholding patterns and exchange announcements, and the daily closing prices published by the exchanges.",
+        "I do not know anything else. No opinions of my own, no news, nothing about other markets, and nothing that is not in the record I can cite.",
+        "Nothing I say is investment advice, a recommendation or a price target - it is an explanation of published figures.",
+        ...WHAT_IT_ANSWERS.slice(0, 2),
+      ],
+    };
+  }
+  if (/^(thanks?|thank you|thx|ok|okay|cool|nice|great|got it|bye|goodbye)\b/.test(q) && q.length < 25) {
+    return { headline: "Glad it helped.", points: [`Ask another question about ${company} whenever you like.`] };
+  }
+  // A question with nothing to do with the company: weather, sport, other people, general chat.
+  if (/\b(weather|joke|cricket|football|movie|song|recipe|who is the (prime minister|president)|your (age|birthday)|love|marry|time in)\b/.test(q)) {
+    return {
+      headline: `That is outside what I can answer. I only read ${company}'s filings and prices.`,
+      points: WHAT_IT_ANSWERS,
+    };
+  }
+  return null;
+}
 
 const pct = (v: number | null, d = 1) => (v === null ? "Data unavailable" : `${v > 0 ? "+" : ""}${v.toFixed(d)}%`);
 const cr = (v: number | null) => (v === null ? "Data unavailable" : `₹${Math.round(v).toLocaleString("en-IN")} Cr`);
@@ -225,6 +284,17 @@ const CACHE_MAX = 300;
 const cache = new Map<string, { at: number; answer: Answer }>();
 
 export async function ask(db: Db, symbol: string, question: string, opts: { debug?: boolean } = {}): Promise<Answer> {
+  // A greeting or a question about the assistant itself is answered before any of the analysis runs.
+  const sym = symbol.toUpperCase();
+  const named = db.scalar<string>("SELECT company FROM company_metrics WHERE symbol = ? OR bse_code = ?", [sym, sym]);
+  const chat = smallTalk(question, named ?? sym);
+  if (chat) {
+    return {
+      question, symbol: sym, company: named ?? null, headline: chat.headline, points: chat.points,
+      citations: [], suggestions: STARTERS, writtenBy: "data", modelPoints: false, asOf: new Date().toISOString(),
+    };
+  }
+
   const d = decide(db, symbol);
   const key = `${d.symbol}|${d.facts.price.session ?? ""}|${question.trim().toLowerCase().replace(/\s+/g, " ")}`;
   const hit = cache.get(key);
@@ -285,7 +355,9 @@ export async function ask(db: Db, symbol: string, question: string, opts: { debu
       // the thirteen intents the question was routed to, which is not always the same thing.
       [headline, ...points] = cleaned;
       modelPoints = points.length > 0;
-      if (!points.length) points = written.points; // a one-line answer keeps the written detail beneath it
+      // A one-line answer keeps the written detail beneath it - unless that line says the record does not answer
+      // the question, in which case stapling a company summary underneath would contradict it.
+      if (!points.length) points = /do not answer|does not answer|cannot|can't|not in the|no information|outside/i.test(headline) ? [] : written.points;
       writtenBy = "model";
     }
   }
@@ -297,14 +369,7 @@ export async function ask(db: Db, symbol: string, question: string, opts: { debu
     headline,
     points,
     citations,
-    suggestions: [
-      "Is it undervalued right now?",
-      "When should I buy, and when should I avoid it?",
-      "What are the biggest risks?",
-      "How did the last quarter go?",
-      "How much debt does it carry?",
-      "What changed recently?",
-    ],
+    suggestions: STARTERS,
     writtenBy,
     modelPoints,
     asOf: new Date().toISOString(),
