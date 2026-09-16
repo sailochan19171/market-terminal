@@ -67,10 +67,12 @@ export const config = {
   ANGEL_PASSWORD: s("ANGEL_PASSWORD"),
   ANGEL_TOTP_SECRET: s("ANGEL_TOTP_SECRET"),
 
-  /** Optional language model for research answers; without a key the answers are written from the data. */
+  /** Optional language model for research answers; without a key the answers are written from the data.
+   *  LLM_PROVIDER: anthropic | gemini | openai | groq, or any OpenAI-compatible host via LLM_BASE_URL. */
   LLM_PROVIDER: s("LLM_PROVIDER", "anthropic").toLowerCase(),
   LLM_API_KEY: s("LLM_API_KEY"),
-  LLM_MODEL: s("LLM_MODEL", "claude-sonnet-5"),
+  LLM_MODEL: s("LLM_MODEL"),
+  LLM_BASE_URL: s("LLM_BASE_URL"),
 
   /** "turso" on the hosted site: read and write the Turso database instead of the local file. */
   DB_MODE: s("MARKET_DB", "local").toLowerCase(),
