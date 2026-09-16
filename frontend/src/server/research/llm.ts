@@ -28,7 +28,7 @@ const DEFAULT_MODEL: Record<string, string> = {
   anthropic: "claude-sonnet-5",
   openai: "gpt-5.6-luna",
   gemini: "gemini-2.5-flash",
-  groq: "llama-3.3-70b-versatile",
+  groq: "openai/gpt-oss-120b",
 };
 
 const shape = (provider: string) => (provider === "anthropic" || provider === "gemini" ? provider : "openai");
