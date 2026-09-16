@@ -4,11 +4,12 @@ import clsx from "clsx";
 import {
   Activity, BarChart3, Scale, Bell, BookOpen, Briefcase, Building2, CalendarDays, ChevronDown, CircleDollarSign, FileBarChart,
   FileText, Flame, Gauge, Grid3x3, Layers, LineChart, ListFilter, Menu, Moon, PieChart, Search, Star, Sun, TrendingUp,
-  UserCheck, Users, X, type LucideIcon,
+  Sparkles, UserCheck, Users, X, type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { BrandMark } from "@/components/BrandMark";
+import { SignIn } from "@/components/SignIn";
 import { SITE_DISCLAIMER } from "@/components/Disclosure";
 import { startRouteProgress } from "@/components/RouteProgress";
 import { useEffect, useRef, useState } from "react";
@@ -83,14 +84,16 @@ const MENU: MenuGroup[] = [
     ],
   },
   {
-    label: "Investors", match: ["/portfolio", "/watchlist", "/alerts"],
+    label: "Investors", match: ["/portfolio", "/watchlist", "/alerts", "/assistant"],
     sections: [
       { title: "Your space", items: [
+        { href: "/assistant", label: "AI research assistant", description: "Ask about any company; answers cite the filing", icon: Sparkles },
         { href: "/portfolio", label: "Portfolio", description: "Holdings, allocation and gains", icon: Briefcase },
         { href: "/watchlist", label: "Watchlist", description: "Companies you follow", icon: Star },
         { href: "/alerts", label: "Alerts", description: "Rules on prices and filings", icon: Bell },
       ] },
     ],
+    feature: { title: "Ask, and read the source", text: "The assistant answers from filings and any document you add, and cites every figure.", href: "/assistant" },
   },
 ];
 
@@ -324,7 +327,12 @@ export function Header() {
           </span>
         </Link>
         <div className="flex flex-1 justify-center"><SearchBox /></div>
+        <Link href="/assistant" title="Ask the research assistant"
+          className="hidden items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-sm font-semibold text-indigo-700 transition hover:border-indigo-400 sm:inline-flex dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300">
+          <Sparkles size={15} aria-hidden /> Ask AI
+        </Link>
         <ThemeToggle />
+        <SignIn />
       </div>
       <nav aria-label="Main" className="mx-auto hidden max-w-[1400px] items-center gap-1 px-4 sm:px-6 lg:flex">
         <Link href="/" className={clsx("relative px-3 py-3 text-sm font-semibold transition", pathname === "/" ? "text-indigo-700 dark:text-indigo-300" : "text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white")}>

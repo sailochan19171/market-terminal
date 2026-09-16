@@ -81,6 +81,11 @@ export const config = {
   EMBED_MODEL: s("EMBED_MODEL"),
   EMBED_BASE_URL: s("EMBED_BASE_URL"),
 
+  /** Sign-in. The project id is what a Firebase ID token is checked against; the session secret signs our own
+   *  cookie, and must be the same on every instance or readers are signed out at random. */
+  FIREBASE_PROJECT_ID: s("NEXT_PUBLIC_FIREBASE_PROJECT_ID") || s("FIREBASE_PROJECT_ID"),
+  SESSION_SECRET: s("SESSION_SECRET"),
+
   /** "turso" on the hosted site: read and write the Turso database instead of the local file. */
   DB_MODE: s("MARKET_DB", "local").toLowerCase(),
   TURSO_DATABASE_URL: s("TURSO_DATABASE_URL"),
