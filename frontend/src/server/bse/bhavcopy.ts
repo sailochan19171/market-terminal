@@ -14,7 +14,7 @@ import { config } from "../config";
 import { now, type Db } from "../db";
 import { HttpError, NotFound, BadRequest } from "../http";
 import { logger } from "../log";
-import { parseIso, addDays } from "../util";
+import { parseIso, addDays, eodSettled } from "../util";
 import { WWW, type BSEClient } from "./client";
 import { pyDictReader, pyFloat, pyInt, pyStrip } from "./pyCompat";
 
@@ -248,7 +248,10 @@ export async function sync(client: BSEClient, db: Db, start: string, end: string
   const { refetch = false, saveRaw = true } = opts;
   const done = new Set<string>();
   if (!refetch) {
-    for (const r of db.all<{ trade_date: string }>("SELECT trade_date FROM bhavcopy_day WHERE status IN ('ok','nodata')")) done.add(r.trade_date);
+    // A day checked before the exchange publishes its file is not settled: "no file" then means "not yet".
+    for (const r of db.all<{ trade_date: string; status: string; fetched_at: string }>(`SELECT trade_date, status, fetched_at FROM bhavcopy_day WHERE status IN ('ok','nodata')`)) {
+      if (r.status === "ok" || eodSettled(r.trade_date, r.fetched_at)) done.add(r.trade_date);
+    }
   }
 
   let total = 0;

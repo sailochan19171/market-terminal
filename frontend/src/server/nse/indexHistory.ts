@@ -9,7 +9,7 @@
 import { now, type Db, type Row } from "../db";
 import { NotFound } from "../http";
 import { logger } from "../log";
-import { addDays } from "../util";
+import { addDays, eodSettled } from "../util";
 import type { NSEClient } from "./client";
 import { decodeUtf8Sig, dictReader, dmy, isoDateOf, normKeys, pyFloat, pyStr, pyStrip, pyTruthy, strptime, textOf, weekday } from "./py";
 
@@ -63,7 +63,10 @@ export const dayPath = (day: string) => CLOSE_ALL_URL.replace("{dmy}", dmy(day, 
 export async function sync(client: Pick<NSEClient, "archive">, db: Db, start: string, end: string, refetch = false): Promise<number> {
   const done = new Set<string>();
   if (!refetch) {
-    for (const r of db.all<{ trade_date: string }>("SELECT trade_date FROM nse_index_history_day WHERE status IN ('ok','nodata')")) done.add(r.trade_date);
+    // "No file yet" during the session is not a holiday; only a check made after the close settles the day.
+    for (const r of db.all<{ trade_date: string; status: string; fetched_at: string }>("SELECT trade_date, status, fetched_at FROM nse_index_history_day WHERE status IN ('ok','nodata')")) {
+      if (r.status === "ok" || eodSettled(r.trade_date, r.fetched_at)) done.add(r.trade_date);
+    }
   }
 
   let total = 0;

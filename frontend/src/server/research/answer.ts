@@ -69,8 +69,8 @@ function compose(intent: Intent, d: Decision, found: Passage[]): { headline: str
       return {
         headline: `${f.company ?? f.symbol}: the models put fair value at ${rs(v.fairValue)}; the price is ${rs(f.price.value)}.`,
         points: [
-          strong?.to ? `Strong buy zone: below ${rs(strong.to)} (at least 30% below fair value) [1].` : "Fair value could not be calculated, so no zone can be drawn.",
-          zone?.from ? `Buy zone: ${rs(zone.from)} to ${rs(zone.to)}, a 15–30% margin of safety [1].` : "",
+          strong?.to ? `Deep discount to the estimate: below ${rs(strong.to)}, at least 30% under the fair value the models produce [1].` : "Fair value could not be calculated, so no zone can be drawn.",
+          zone?.from ? `Discount to the estimate: ${rs(zone.from)} to ${rs(zone.to)}, a 15-30% margin of safety [1].` : "",
           `Today the margin of safety is ${v.marginOfSafety === null ? "unavailable" : `${v.marginOfSafety.toFixed(1)}%`}, so the price is ${v.status.toLowerCase()} [1][2].`,
           `Conditions met: ${d.conditionsMet}. ${d.conditions.filter((c) => c.met === false).slice(0, 2).map((c) => `Not met: ${c.label.toLowerCase()} — ${c.detail}`).join(" ")}`,
           `On these checks the company ${d.verdict.toLowerCase().replace("screens", "screens as")}, confidence ${d.confidence}. Educational analysis of published figures; this platform issues no buy, sell or target recommendations.`,

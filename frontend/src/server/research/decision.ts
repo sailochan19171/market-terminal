@@ -173,7 +173,7 @@ export function decide(db: Db, symbol: string): Decision {
     `Next quarterly result${fx.quarters[0] ? ` (last one: ${fx.quarters[0].period})` : ""}: revenue, margin and whether profit is backed by cash.`,
     "Shareholding pattern each quarter: promoter holding, pledge, and institutional flows.",
     ...(fx.bank ? ["Asset quality and provisions disclosed with results."] : ["Free cash flow and capital spending in the annual cash flow statement."]),
-    `Price against the buy zone: ${val.zones[1]?.from ? `₹${val.zones[1].from} – ₹${val.zones[1].to}` : "unavailable"}.`,
+    `Price against the discount band: ${val.zones[1]?.from ? `₹${val.zones[1].from} – ₹${val.zones[1].to}` : "unavailable"}.`,
   ];
 
   return {

@@ -3,6 +3,7 @@ import type { Db, Row } from "../db";
 import * as A from "../core/analysis";
 import * as sync from "../nse/companySync";
 import { addDays, parseIso, pctChange, todayIso } from "../util";
+import { quote } from "../core/price";
 import { ApiError, Args, badRequest, checkDate } from "./common";
 import { DERIVATIVE_INDEX_SYMBOLS, INDEX_NAMES } from "./v2";
 import { logger } from "../log";
@@ -52,7 +53,7 @@ function valuationSeries(model: Row, prices: Row[]) {
   return out;
 }
 
-export function dashboard(db: Db, ident: string, a: Args): { data: Row; cache: string } {
+export async function dashboard(db: Db, ident: string, a: Args): Promise<{ data: Row; cache: string }> {
   const identity = identityOr404(db, ident);
   const dateFrom = a.date("from");
   let dateTo = a.date("to");
@@ -108,9 +109,14 @@ export function dashboard(db: Db, ident: string, a: Args): { data: Row; cache: s
   const versions = db.all("SELECT id, version, analysis_date, kind, exchange, created_at, summary FROM analysis_version WHERE company_key = ? ORDER BY analysis_date DESC, version DESC LIMIT 50", [identity.key]);
   const identOut = { ...model.identity, indices: ((model.identity.indices ?? []) as string[]).map((s) => ({ slug: s, name: INDEX_NAMES[s] ?? s })) };
 
+  // One price for every surface: the same service the research pages, screens and answers quote from, with its
+  // own "as of" stamp and live/end-of-day flag. Historical and saved-version views stay pinned to their date.
+  const price = await quote(db, identity, exchange, { asOf: version ? version.analysis_date : asOf });
+
   const data = {
     ...model,
     identity: identOut,
+    price,
     mode: version ? "version" : asOf ? "historical" : "latest",
     version: version ? publicVersion(version) : null,
     range: { from: start, to: end, preset: preset || (dateFrom ? "CUSTOM" : "1Y") },

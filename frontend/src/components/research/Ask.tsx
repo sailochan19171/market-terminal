@@ -3,6 +3,7 @@
 import clsx from "clsx";
 import { ExternalLink, Send } from "lucide-react";
 import { useRef, useState } from "react";
+import { AiDisclosure } from "@/components/Disclosure";
 import { BrandMark } from "@/components/BrandMark";
 import { Card, CardHeader } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -87,6 +88,7 @@ export function Ask({ symbol, company }: { symbol: string; company: string | nul
         ))}
         {busy && <p className="flex items-center gap-2 text-sm text-slate-500"><BrandMark size={18} animated /> Reading the filings…</p>}
         {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
+        <AiDisclosure kind={thread.some((t) => t.writtenBy === "model") ? "ai" : "retrieval"} />
       </div>
 
       <div className="border-t border-slate-100 px-5 py-3 sm:px-6 dark:border-slate-800">

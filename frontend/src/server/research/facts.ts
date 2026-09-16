@@ -3,6 +3,7 @@
 // Nothing here is estimated: a number is either present in a filing (or a session's prices) or the field is
 // null and the caller says "Data unavailable". Values are in the units the filings use; helpers convert.
 import type { Db, Row } from "../db";
+import { quoteFor, type PriceQuote } from "../core/price";
 import { cagr, median, pctChange, toNum } from "../util";
 
 export interface Fact<T = number | null> {
@@ -37,6 +38,8 @@ export interface Facts {
   industry: string | null;
   bank: boolean;
   price: Fact & { session: string | null };
+  /** The canonical quote every surface shares, with its own "as of" stamp and live/end-of-day flag. */
+  quote: PriceQuote | null;
   marketCapCr: Fact;
   quarters: Quarter[];
   growth: { revenueYoY: Fact; patYoY: Fact; revenueCagr3y: Fact; patCagr3y: Fact };
@@ -83,6 +86,7 @@ export function facts(db: Db, symbol: string): Facts {
   const bank = String(qs[0]?.report_format ?? "") === "bank" || /bank|financial|finance|nbfc|insur/i.test(String(m.industry ?? ""));
   const bs = statementValues(db, sym, "balance_sheet");
   const cf = statementValues(db, sym, "cash_flow", 12);
+  const pq = quoteFor(db, sym); // the shared price service, not company_metrics, so every surface agrees
 
   const quarters: Quarter[] = qs.map((q) => ({
     period: String(q.period_end),
@@ -138,7 +142,8 @@ export function facts(db: Db, symbol: string): Facts {
     company: (m.company as string) ?? null,
     industry: (m.industry as string) ?? null,
     bank,
-    price: { ...f(toNum(m.close), "INR", null, "NSE bhavcopy"), session: (m.trade_date as string) ?? null },
+    price: { ...f(pq?.lastPrice ?? toNum(m.close), "INR", pq?.session ?? null, pq?.source ?? "NSE bhavcopy"), session: pq?.session ?? (m.trade_date as string) ?? null },
+    quote: pq,
     marketCapCr: f(toNum(m.market_cap_cr), "INR_CR", null, `market cap (${m.mcap_source ?? "shares × price"})`),
     quarters,
     growth: {

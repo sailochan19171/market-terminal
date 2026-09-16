@@ -12,6 +12,10 @@
     "e2e:dashboard": "tsx tests/e2e/dashboard.ts",
     "e2e:markets": "tsx tests/e2e/markets.ts",
     "e2e": "npm run e2e:dashboard && npm run e2e:markets",
+    "check:verdict": "tsx scripts/check-verdict.ts",
+    "check:language": "tsx scripts/check-language.ts",
+    "check:answers": "tsx scripts/check-answers.ts",
+    "check": "npm run check:verdict && npm run check:language",
     "deploy:netlify": "netlify build --offline && netlify deploy --prod --no-build --dir .netlify/static",
     "publish": "node --disable-warning=ExperimentalWarning --import tsx src/server/cli.ts publish"
   },

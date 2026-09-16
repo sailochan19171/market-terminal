@@ -14,7 +14,7 @@ import { config } from "../config";
 import { now, type Db, type Row } from "../db";
 import { NotFound } from "../http";
 import { logger } from "../log";
-import { addDays } from "../util";
+import { addDays, eodSettled } from "../util";
 import type { NSEClient } from "./client";
 import { decodeUtf8Sig, dictReader, normKeys, pyFloat, pyInt, pyStr, pyStrip, pyTruthy, weekday } from "./py";
 
@@ -158,7 +158,10 @@ export async function fetchDay(client: ArchiveClient, day: string, saveRaw = tru
 export async function sync(client: ArchiveClient, db: Db, start: string, end: string, refetch = false, saveRaw = true): Promise<number> {
   const done = new Set<string>();
   if (!refetch) {
-    for (const r of db.all<{ trade_date: string }>("SELECT trade_date FROM nse_bhavcopy_day WHERE status IN ('ok','nodata')")) done.add(r.trade_date);
+    // A day checked before the exchange publishes its file is not settled: "no file" then means "not yet".
+    for (const r of db.all<{ trade_date: string; status: string; fetched_at: string }>(`SELECT trade_date, status, fetched_at FROM nse_bhavcopy_day WHERE status IN ('ok','nodata')`)) {
+      if (r.status === "ok" || eodSettled(r.trade_date, r.fetched_at)) done.add(r.trade_date);
+    }
   }
 
   let total = 0;

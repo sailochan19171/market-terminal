@@ -9,6 +9,7 @@ import {
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { BrandMark } from "@/components/BrandMark";
+import { SITE_DISCLAIMER } from "@/components/Disclosure";
 import { startRouteProgress } from "@/components/RouteProgress";
 import { useEffect, useRef, useState } from "react";
 import { api, useApi } from "@/lib/api";
@@ -77,7 +78,7 @@ const MENU: MenuGroup[] = [
         { href: "/screens", label: "Stock screens", description: "Ready-made and custom screens", icon: ListFilter },
         { href: "/analyses", label: "Completed analyses", description: "Stored company analyses and versions", icon: Layers },
         { href: "/company/RELIANCE", label: "Company dashboard", description: "Summary and detailed analysis for any company", icon: BookOpen },
-        { href: "/research/RELIANCE", label: "Valuation research", description: "Fair value, margin of safety and buy zones", icon: Scale },
+        { href: "/research/RELIANCE", label: "Valuation research", description: "Fair value, margin of safety and valuation bands", icon: Scale },
       ] },
     ],
   },
@@ -359,9 +360,13 @@ export function Footer() {
           </div>
         ))}
       </div>
-      <p className="border-t border-slate-100 py-4 text-center text-xs text-slate-400 dark:border-slate-800">
-        End-of-day prices and filings. Figures derived from exchange filings may be incomplete; check the source document.
-      </p>
+      <div className="border-t border-slate-100 px-4 py-4 text-center text-xs text-slate-400 dark:border-slate-800">
+        <p className="mx-auto max-w-4xl text-slate-500 dark:text-slate-400">{SITE_DISCLAIMER}</p>
+        <p className="mt-1.5">
+          End-of-day prices and filings. Figures derived from exchange filings may be incomplete; check the source document.{" "}
+          <Link href="/disclosures" className="underline underline-offset-2 hover:text-indigo-600">How our analysis and AI work</Link>.
+        </p>
+      </div>
     </footer>
   );
 }

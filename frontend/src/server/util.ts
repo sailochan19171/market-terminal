@@ -120,3 +120,17 @@ export async function mapPool<T, R>(items: T[], limit: number, fn: (item: T, ind
   await Promise.all(workers);
   return out;
 }
+
+/**
+ * Was a "no file for this day" verdict reached late enough to be believed?
+ *
+ * The exchanges publish an end-of-day file after the session closes, so a fetch that ran during the session
+ * finds nothing and would otherwise mark a perfectly normal trading day as a holiday for ever. A day is settled
+ * only once it was checked after `afterIstHour` on the day itself; anything earlier is retried.
+ */
+export function eodSettled(tradeDate: string, fetchedAt: unknown, afterIstHour = 19): boolean {
+  const at = parseIso(String(fetchedAt ?? "").replace(" ", "T"));
+  if (!at || !/^\d{4}-\d{2}-\d{2}$/.test(tradeDate)) return false;
+  const cutoff = new Date(`${tradeDate}T${String(afterIstHour).padStart(2, "0")}:30:00+05:30`);
+  return at.getTime() >= cutoff.getTime();
+}

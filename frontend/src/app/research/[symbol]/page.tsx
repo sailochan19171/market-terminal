@@ -6,6 +6,9 @@ import Link from "next/link";
 import { use } from "react";
 import { PageLoader } from "@/components/PageLoader";
 import { Ask } from "@/components/research/Ask";
+import { RiskFlags } from "@/components/research/RiskFlags";
+import { VerdictPanel } from "@/components/research/VerdictPanel";
+import { WhyMoving } from "@/components/research/WhyMoving";
 import { Card, CardBody, CardHeader, ErrorNote, Stat } from "@/components/ui";
 import { useApi } from "@/lib/api";
 import { dateOnly, num, pct } from "@/lib/format";
@@ -144,6 +147,12 @@ export default function ResearchPage({ params }: { params: Promise<{ symbol: str
           </div>
         </CardBody>
       </Card>
+
+      <WhyMoving symbol={data.symbol} />
+
+      <VerdictPanel symbol={data.symbol} />
+
+      <RiskFlags symbol={data.symbol} />
 
       <Card>
         <CardHeader title="Where the price sits" subtitle="Zones follow from the weighted fair value; they are not price targets." />

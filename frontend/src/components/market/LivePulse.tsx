@@ -200,8 +200,8 @@ export function LivePulse() {
           </span>
         }
         subtitle={data.status.open
-          ? `NSE live · as of ${dateTime(data.asOf)}`
-          : `${data.status.message || "Market closed"} · showing the last session, ${dateTime(data.asOf)}`}
+          ? `NSE live · as of ${dateTime(data.asOf)} IST`
+          : `${data.status.message || "Market closed"} · showing the last session, ${dateTime(data.asOf)} IST`}
         actions={
           <button type="button" onClick={reload} disabled={loading}
             className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 transition hover:border-indigo-300 disabled:opacity-60 dark:border-slate-700 dark:text-slate-300"

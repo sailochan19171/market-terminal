@@ -4,6 +4,10 @@ import clsx from "clsx";
 import { CheckCircle2, XCircle } from "lucide-react";
 import Link from "next/link";
 import { useMemo } from "react";
+import { QuoteStamp } from "@/components/AsOf";
+import { VerdictPanel } from "@/components/research/VerdictPanel";
+import { RiskFlags } from "@/components/research/RiskFlags";
+import { WhyMoving } from "@/components/research/WhyMoving";
 import { Donut } from "@/components/charts/Categorical";
 import { TimeChart } from "@/components/charts/TimeChart";
 import { Badge, Card, CardBody, CardHeader } from "@/components/ui";
@@ -16,9 +20,13 @@ import { WatchButton } from "./WatchButton";
 export const COLORS = { sales: "#4f46e5", gross: "#0ea5e9", profit: "#10b981", op: "#f59e0b", eps: "#8b5cf6", shares: "#64748b" };
 
 export function CompanyHeader({ data }: { data: Dashboard }) {
-  const { identity: id, quote: q } = data;
-  const range = q && isNum(q.high52w) && isNum(q.low52w) && q.high52w > q.low52w
-    ? Math.min(100, Math.max(0, ((q.close - q.low52w) / (q.high52w - q.low52w)) * 100)) : null;
+  const { identity: id, quote: q, price } = data;
+  // The price service is the authority on what the stock is worth right now; the bars only add the 52-week range.
+  const last = price?.lastPrice ?? q?.close ?? null;
+  const change = price?.changeAbs ?? q?.change ?? null;
+  const changePct = price?.changePct ?? q?.changePct ?? null;
+  const range = q && isNum(q.high52w) && isNum(q.low52w) && isNum(last) && q.high52w > q.low52w
+    ? Math.min(100, Math.max(0, ((last - q.low52w) / (q.high52w - q.low52w)) * 100)) : null;
   return (
     <Card className="motion-rise">
       <CardBody className="flex flex-wrap items-start justify-between gap-5">
@@ -34,16 +42,16 @@ export function CompanyHeader({ data }: { data: Dashboard }) {
         </div>
         <div className="flex flex-wrap items-start gap-5">
           <div className="text-right">
-            {q ? (
+            {isNum(last) ? (
               <>
                 <div className="flex items-baseline justify-end gap-2">
-                  <span className="tabular text-3xl font-semibold">{inr(q.close)}</span>
-                  <span className={clsx("tabular text-sm font-semibold", tone(q.change))}>
-                    {isNum(q.change) ? `${q.change >= 0 ? "+" : ""}${num(q.change)}` : ""} ({pct(q.changePct)})
+                  <span className="tabular text-3xl font-semibold">{inr(last)}</span>
+                  <span className={clsx("tabular text-sm font-semibold", tone(change))}>
+                    {isNum(change) ? `${change >= 0 ? "+" : ""}${num(change)}` : ""} ({pct(changePct)})
                   </span>
                 </div>
-                <p className="mt-0.5 text-xs text-slate-500">{data.exchange} close · {dateOnly(q.session)}</p>
-                {range != null && (
+                <QuoteStamp quote={price} className="mt-1 justify-end" />
+                {range != null && q && (
                   <div className="mt-2 w-56" aria-label={`52-week range ${inr(q.low52w)} to ${inr(q.high52w)}`}>
                     <div className="relative h-1.5 rounded-full bg-gradient-to-r from-rose-200 via-slate-200 to-emerald-200 dark:from-rose-500/30 dark:via-slate-700 dark:to-emerald-500/30">
                       <span className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-indigo-600 shadow dark:border-slate-900" style={{ left: `${range}%` }} />
@@ -100,6 +108,13 @@ export function SummaryView({ data }: { data: Dashboard }) {
 
   return (
     <div className="space-y-5">
+      {data.mode === "latest" && data.identity.symbol && !data.identity.limited && (
+        <>
+          <WhyMoving symbol={data.identity.symbol} />
+          <VerdictPanel symbol={data.identity.symbol} />
+          <RiskFlags symbol={data.identity.symbol} />
+        </>
+      )}
       <div className="motion-stagger grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
         <KpiCard data={data} metric="market_cap" emphasis />
         <KpiCard data={data} metric="revenue_ttm" sub={<Delta value={m.revenue_ttm_growth as number} label="vs prior TTM" />} />

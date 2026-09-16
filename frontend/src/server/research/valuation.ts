@@ -5,6 +5,7 @@
 //   - every figure carries its source (filing period and document, or the session it was priced from);
 //   - banks and finance companies are valued on book value, not on enterprise value.
 import type { Db, Row } from "../db";
+import { quoteFor, type PriceQuote } from "../core/price";
 import { cagr, median, toNum } from "../util";
 
 export interface Source {
@@ -32,7 +33,8 @@ export interface Valuation {
   symbol: string;
   company: string | null;
   kind: "bank" | "corporate";
-  price: { close: number | null; session: string | null; exchange: "NSE" | "BSE" | null };
+  price: { close: number | null; session: string | null; exchange: "NSE" | "BSE" | null; asOf: string | null; source: string | null; isLive: boolean };
+  quote: PriceQuote | null;
   inputs: Row;
   models: Model[];
   fairValue: number | null;
@@ -65,8 +67,9 @@ export const ASSUMPTIONS = {
   /** Models below this weight support the picture but do not set the range. */
   coreWeight: 0.1,
   historyYears: 5,
-  // Margin of safety bands, as a fraction of fair value.
-  zones: { strongBuy: 0.7, buy: 0.85, fair: 1.1, overvalued: 1.35 },
+  // Margin-of-safety bands, as a fraction of fair value. Deliberately not named after actions: these describe
+  // a discount to an estimate, not a call to trade.
+  zones: { deepDiscount: 0.7, discount: 0.85, fair: 1.1, overvalued: 1.35 },
 };
 
 const CR = 1e7; // one crore, the unit company_metrics stores
@@ -174,7 +177,8 @@ export function valuation(db: Db, symbol: string): Valuation {
   const format = (qs[0]?.report_format as string | null) ?? (bs?.report_format as string | null) ?? null;
   const bank = isBank(m ?? {}, format);
 
-  const price = positive(toNum(m?.close));
+  const pq = quoteFor(db, sym); // one price service for every surface (see core/price.ts)
+  const price = positive(pq?.lastPrice ?? toNum(m?.close));
   const epsTtm = ttm.length === 4 ? ttm.reduce((s, q) => s + (toNum(q.eps_basic) ?? 0), 0) : null;
   const shares = positive(toNum(m?.shares)) ?? positive(toNum(qs[0]?.shares));
   const bvps = positive(toNum(m?.bvps));
@@ -263,11 +267,11 @@ export function valuation(db: Db, symbol: string): Valuation {
   const upside = fairValue && price ? (fairValue - price) / price : null;
   const z = ASSUMPTIONS.zones;
   const zones: Zone[] = fairValue ? [
-    { key: "strong_buy", label: "Strong buy zone", from: null, to: round(fairValue * z.strongBuy), meaning: "At least 30% below the estimated fair value." },
-    { key: "buy", label: "Buy zone", from: round(fairValue * z.strongBuy), to: round(fairValue * z.buy), meaning: "15–30% below fair value: a usable margin of safety." },
-    { key: "fair", label: "Fair value zone", from: round(fairValue * z.buy), to: round(fairValue * z.fair), meaning: "Priced around the estimate; little margin for error." },
-    { key: "overvalued", label: "Overvalued", from: round(fairValue * z.fair), to: round(fairValue * z.overvalued), meaning: "Above the estimate; the price already assumes more than the models do." },
-    { key: "extreme", label: "High risk", from: round(fairValue * z.overvalued), to: null, meaning: "Far above the estimate; the models cannot support this price." },
+    { key: "deep_discount", label: "Deep discount to the estimate", from: null, to: round(fairValue * z.deepDiscount), meaning: "At least 30% below the estimated fair value." },
+    { key: "discount", label: "Discount to the estimate", from: round(fairValue * z.deepDiscount), to: round(fairValue * z.discount), meaning: "15–30% below fair value: a usable margin of safety." },
+    { key: "fair", label: "Around the estimate", from: round(fairValue * z.discount), to: round(fairValue * z.fair), meaning: "Priced around the estimate; little margin for error." },
+    { key: "overvalued", label: "Above the estimate", from: round(fairValue * z.fair), to: round(fairValue * z.overvalued), meaning: "Above the estimate; the price already assumes more than the models do." },
+    { key: "extreme", label: "Far above the estimate", from: round(fairValue * z.overvalued), to: null, meaning: "Far above the estimate; the models cannot support this price." },
   ] : [];
 
   const reasons: string[] = [];
@@ -287,7 +291,7 @@ export function valuation(db: Db, symbol: string): Valuation {
   if (qs.length && qs.length < 8) cautions.push(`Only ${qs.length} quarters of results are parsed so far, which limits growth and valuation history.`);
 
   const sources: Source[] = [];
-  if (m?.trade_date) sources.push({ label: "Price and market cap", origin: "NSE bhavcopy", asOf: String(m.trade_date), period: null, url: null });
+  if (pq?.session) sources.push({ label: "Price and market cap", origin: pq.source, asOf: pq.asOfTimestamp, period: null, url: null });
   if (ttm.length) sources.push({ label: "Earnings (trailing four quarters)", origin: `NSE XBRL results, ${ttm[0].consolidated ? "consolidated" : "standalone"}`, period: `${ttm[3]?.period_end} to ${ttm[0]?.period_end}`, url: String(ttm[0].xbrl_url ?? "") || null });
   if (bs) sources.push({ label: "Balance sheet", origin: "NSE XBRL filing", period: String(bs.period_end), url: String(bs.xbrl_url ?? "") || null });
   if (cf.length) sources.push({ label: "Cash flow", origin: "NSE XBRL filing", period: String(cf[0].period_end), url: String(cf[0].xbrl_url ?? "") || null });
@@ -297,7 +301,12 @@ export function valuation(db: Db, symbol: string): Valuation {
     symbol: sym,
     company: (m?.company as string | null) ?? null,
     kind: bank ? "bank" : "corporate",
-    price: { close: price, session: (m?.trade_date as string | null) ?? null, exchange: price ? "NSE" : null },
+    price: {
+      close: price, session: pq?.session ?? (m?.trade_date as string | null) ?? null,
+      exchange: pq?.exchange ?? (price ? "NSE" : null), asOf: pq?.asOfTimestamp ?? null,
+      source: pq?.source ?? null, isLive: pq?.isLive ?? false,
+    },
+    quote: pq,
     inputs: {
       epsTtm: round(epsTtm), bvps: round(bvps), sharesCr: round(shares ? shares / CR : null), dividendPerShare: round(dps),
       ebitdaTtmCr: round(ebitdaTtm ? ebitdaTtm / CR : null), netDebtCr: round(netDebt !== null ? netDebt / CR : null),

@@ -1,5 +1,6 @@
 // Types and shared helpers for the company dashboard (GET /api/v2/company/<id>/dashboard).
 
+import type { PriceQuote } from "@/components/AsOf";
 import { countIN, inr, inrCrore, isNum, num, pct, percent, shiftDate, type Num } from "./format";
 
 export type Exchange = "NSE" | "BSE";
@@ -58,6 +59,8 @@ export interface Dashboard {
   mode: "latest" | "historical" | "version";
   version: VersionMeta | null;
   quote: Quote | null;
+  /** The shared price service's answer for this company: what every surface must display. */
+  price: PriceQuote | null;
   metrics: Record<string, Num | string>;
   reasons: Record<string, string>;
   sources: Record<string, string>;
