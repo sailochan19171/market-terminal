@@ -189,6 +189,8 @@ export function scoring(): Scoring {
 export interface AgentSetting { model: string | null; temperature: number | null; timeoutMs: number | null; maxRetries: number | null; maxWaitMs: number | null }
 export interface Settings {
   agents: Record<string, AgentSetting>;
+  /** Models to fall back to when the usual ones are out of tokens for the day, by provider. */
+  spareModels: Record<string, string[]>;
   request: { targetSeconds: number; maxLlmCalls: number; maxLoops: number };
   smallModels: Record<string, string>;
   /** Retry a rate-limited strong-model call on the small tier before writing the answer from data alone. */
@@ -219,6 +221,7 @@ export function settings(): Settings {
     // Clamped so a config file cannot lift the spec's hard limits (§3.2: 12 calls, 2 loops).
     request: { targetSeconds: num(r.target_seconds, 60), maxLlmCalls: Math.min(12, num(r.max_llm_calls, 12)), maxLoops: Math.min(2, num(r.max_loops, 2)) },
     smallModels: Object.fromEntries(Object.entries(map(y.small_models)).map(([k, v]) => [k, String(v)])),
+    spareModels: Object.fromEntries(Object.entries(map(y.spare_models)).map(([k, v]) => [k, (Array.isArray(v) ? v : [v]).map(String).filter(Boolean)])),
     fallbackToSmall: y.fallback_to_small_model !== false,
   };
   return settingsCache;

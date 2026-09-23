@@ -18,6 +18,21 @@ export const backupHost = (): Host | null =>
 
 export const available = () => Boolean(config.LLM_API_KEY || backupHost());
 
+/**
+ * A host that has spent its daily allowance says so plainly, and will keep saying so until the allowance
+ * resets. Remembering that for a while saves every later call the wait, the retries and the timeout it would
+ * otherwise spend finding out again - which is the difference between the backup answering in time and not.
+ */
+const spentUntil = new Map<string, number>();
+const DAILY_LIMIT = /per day|\bTPD\b|\bRPD\b|daily/i;
+const REMEMBER_MS = 30 * 60_000;
+
+// Each model is metered on its own, so one model running dry says nothing about the next: only the model that
+// reported the limit is stepped over, which is what makes a ladder of models worth having.
+export const outOfQuota = (provider: string, model?: string) => Date.now() < (spentUntil.get(`${provider}:${model ?? ""}`) ?? 0);
+
+const rememberSpent = (provider: string, model: string) => spentUntil.set(`${provider}:${model}`, Date.now() + REMEMBER_MS);
+
 // Anthropic and Gemini have their own request shapes; everything else here speaks the OpenAI chat-completions
 // dialect, so Groq, Together, OpenRouter, DeepSeek or a model on this machine all work by naming the provider
 // (or by pointing LLM_BASE_URL at any other compatible host).
@@ -36,7 +51,7 @@ const ENDPOINTS: Record<string, string> = {
 const DEFAULT_MODEL: Record<string, string> = {
   anthropic: "claude-sonnet-5",
   openai: "gpt-5.6-luna",
-  gemini: "gemini-2.5-flash",
+  gemini: "gemini-2.5-flash",   // the newer flash models need a paid plan; this one has a free allowance
   groq: "openai/gpt-oss-120b",
   cerebras: "gpt-oss-120b",
 };
@@ -163,9 +178,17 @@ export async function chat(opts: ChatOptions): Promise<Completion> {
         // A daily quota does not come back in twelve seconds; waiting only makes the reader wait.
         if (res.status === 429) {
           const peek = await res.clone().text().catch(() => "");
-          if (/per day|TPD|RPD|daily/i.test(peek)) break;
+          if (DAILY_LIMIT.test(peek)) {
+            rememberSpent(provider, model);
+            break;
+          }
         }
-        const wait = Math.min(Number(res.headers.get("retry-after") ?? 0) * 1000 || 2000 * 2 ** attempt, 12_000);
+        // How long to wait: the header if the host sets one, otherwise the delay it names in the body (Gemini
+        // answers "Please retry in 22.1s" and means it - coming back in two seconds only spends another request
+        // against the same per-minute limit), and failing both, a doubling back-off.
+        const body = res.status === 429 ? await res.clone().text().catch(() => "") : "";
+        const asked = Number(body.match(/retry in (\d+(?:\.\d+)?)s/i)?.[1] ?? body.match(/"retryDelay":\s*"(\d+(?:\.\d+)?)s"/)?.[1] ?? 0) * 1000;
+        const wait = Math.min(Number(res.headers.get("retry-after") ?? 0) * 1000 || asked || 2000 * 2 ** attempt, 30_000);
         // A long wait costs more than it saves: with many jobs running, the caller does better switching to another
         // model tier at once. Only short pauses are sat out.
         if (res.status === 429 && wait > (opts.maxWaitMs ?? 12_000)) break;
@@ -176,6 +199,7 @@ export async function chat(opts: ChatOptions): Promise<Completion> {
       break;
     }
     const text = await res.text();
+    if (res.status === 429 && DAILY_LIMIT.test(text)) rememberSpent(provider, model);
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
     const data = JSON.parse(text);
     const answer = kind === "anthropic"

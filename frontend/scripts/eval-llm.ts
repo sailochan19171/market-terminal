@@ -65,7 +65,9 @@ async function main() {
     const started = Date.now();
     const r: AnalysisResponse = await analyze(db, { message: q, personaId: persona, record: false });
     const text = r.final ? [r.final.summary, ...r.final.strengths, ...r.final.concerns].join(" ") : (r.concept?.text ?? "");
-    const pool = numberPool([r.companies, r.final?.categoryScores, r.final?.personaFit, r.persona, [1, 0.5, 0.02, 0.0178, 0.026, 0.011, 0.14, 0.09, 0.365, 0.5]]);
+    const pool = numberPool([r.companies, r.final?.categoryScores, r.final?.personaFit, r.persona, // The same fixed reference points the writer is allowed to name: "52-week range", "50-day average",
+      // the Piotroski scale, Beneish's -1.78. Without them the check reports a figure the product accepts.
+      [1, 0.5, 0.02, 0.0178, 0.026, 0.011, 0.14, 0.09, 0.365, 0.5], [100, 50, 200, 52, 14, 9, 1.78, 2.6, 1.1, 365]]);
     for (const v of numberPool(r.companies)) if (Math.abs(v) >= 1e6) pool.push(v / 1e6, v / 1e9);
     const bad = r.final ? ungroundedNumbers(text, pool) : [];
     const said = violations(text);

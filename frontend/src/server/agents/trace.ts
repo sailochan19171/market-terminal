@@ -7,7 +7,7 @@ import type { Db } from "../db";
 import { now } from "../db";
 import { logger } from "../log";
 import { config } from "../config";
-import { backupHost, chat, type ChatOptions, type Completion } from "../research/llm";
+import { backupHost, chat, outOfQuota, primaryHost, type ChatOptions, type Completion } from "../research/llm";
 import { agentSetting, settings } from "./config";
 import { digest, type StepDetail } from "./digest";
 import type { AgentError } from "./state";
@@ -145,29 +145,38 @@ export class Trace {
       this.write({ agent, stage: "llm", at: now(), durationMs: 0, output: skipped });
       return skipped;
     }
-    this.llmCalls++;
-    let result = await (this.chatFn ?? chat)(opts);
-    const budgetLeft = () => this.llmCalls < Math.min(MAX_LLM_CALLS, settings().request.maxLlmCalls);
-    const fitted = () => Math.max(2_000, Math.min(opts.timeoutMs ?? 45_000, this.remainingMs() - 2_000));
-    // The primary host is rate-limited, out of quota, down or unreachable: the backup host (LLM_BACKUP_PROVIDER)
-    // answers the same call on the same tier, with its own quota.
-    const backup = backupHost();
-    if (!result.text && backup && !raw.host && /429|rate limit|quota|HTTP 5\d\d|fetch failed|timeout|aborted|no key/i.test(result.error ?? "") && budgetLeft() && this.remainingMs() > 5_000) {
-      this.llmCalls++;
-      const small = agentSetting(agent).model === "small";
-      const model = small ? settings().smallModels[backup.provider] : undefined;
-      this.write({ agent, stage: "llm", at: now(), durationMs: result.latencyMs, output: { text: null, model: result.model, error: result.error, fellBackTo: `${backup.provider}${model ? ` ${model}` : ""}` } });
-      result = await (this.chatFn ?? chat)({ ...opts, host: backup, model, timeoutMs: fitted() });
-    }
-    // Still no answer on a rate limit: try the primary's small tier, which has its own quota, before
-    // falling back to a data-written answer (config/settings.yaml: fallback_to_small_model).
+    // Every model this request may use, in order: the agent's own, then the provider's smaller tier, then its
+    // spare models (each free tier meters every model separately), then a second provider if one is set up.
+    // A model that has already said it is out of tokens for the day is stepped over rather than asked again.
     const small = settings().smallModels[config.LLM_PROVIDER];
-    if (!result.text && settings().fallbackToSmall && small && opts.model !== small && /429|rate limit|quota/i.test(result.error ?? "")
-      && budgetLeft()) {
-      this.llmCalls++;
-      this.write({ agent, stage: "llm", at: now(), durationMs: result.latencyMs, output: { text: null, model: result.model, error: result.error, fellBackTo: small } });
-      result = await (this.chatFn ?? chat)({ ...opts, host: undefined, model: small, timeoutMs: fitted() });
+    const backup = backupHost();
+    const ladder: { host?: typeof backup; model?: string; label: string }[] = [
+      { model: opts.model, label: opts.model ?? "the configured model" },
+      ...(settings().fallbackToSmall && small && opts.model !== small ? [{ model: small, label: small }] : []),
+      ...(settings().spareModels[config.LLM_PROVIDER] ?? []).filter((m) => m !== opts.model && m !== small).map((m) => ({ model: m, label: m })),
+      ...(backup && !raw.host ? [{ host: backup, model: agentSetting(agent).model === "small" ? settings().smallModels[backup.provider] : backup.model, label: backup.provider }] : []),
+    ];
+
+    const fitted = () => Math.max(2_000, Math.min(opts.timeoutMs ?? 45_000, this.remainingMs() - 2_000));
+    const budgetLeft = () => this.llmCalls < Math.min(MAX_LLM_CALLS, settings().request.maxLlmCalls);
+    const RETRYABLE = /429|rate limit|quota|HTTP 5\d\d|fetch failed|timeout|aborted|no key/i;
+
+    let result: Completion = { text: null, model: "", promptTokens: null, completionTokens: null, latencyMs: 0, error: "no model was asked" };
+    for (const [i, step] of ladder.entries()) {
+      const provider = step.host?.provider ?? config.LLM_PROVIDER;
+      if (outOfQuota(provider, step.model)) {
+        this.write({ agent, stage: "llm", at: now(), durationMs: 0, output: { text: null, model: step.label, error: "out of tokens for today", fellBackTo: ladder[i + 1]?.label ?? "the data" } });
+        continue;
+      }
+      if (i > 0) {
+        if (!budgetLeft() || this.remainingMs() < 5_000) break;
+        this.llmCalls++;
+        this.write({ agent, stage: "llm", at: now(), durationMs: result.latencyMs, output: { text: null, model: result.model, error: result.error, fellBackTo: step.label } });
+      }
+      result = await (this.chatFn ?? chat)({ ...opts, host: step.host ?? raw.host, model: step.model, timeoutMs: i > 0 ? fitted() : opts.timeoutMs });
+      if (result.text || !RETRYABLE.test(result.error ?? "")) break;
     }
+
     this.write({
       agent, stage: "llm", at: now(), durationMs: result.latencyMs,
       input: { system: opts.system.slice(0, 400), user: opts.user.slice(0, 4000) },

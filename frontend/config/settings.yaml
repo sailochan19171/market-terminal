@@ -48,10 +48,16 @@ technical_agent:
 # When the strong model is rate-limited or out of daily quota, retry on the small tier (its own quota) before
 # writing the answer from the data alone. Counts against the 12-call budget.
 fallback_to_small_model: true
+# Models to turn to when the usual ones have spent the day's allowance. Every free tier meters each model
+# separately, so another model on the same key is another day's worth of answers - no second account needed.
+spare_models:
+  groq:
+    - qwen/qwen3.8-27b
+    - openai/gpt-oss-safeguard-20b
 # What "small" means for each provider. A tier on a separate model also has its own rate limit on most hosts.
 small_models:
   groq: openai/gpt-oss-20b
   # cerebras: no small tier named - its free daily quota is large enough to run every agent on gpt-oss-120b
   openai: gpt-5.6-luna-mini
   anthropic: claude-haiku-4-5-20251001
-  gemini: gemini-2.5-flash-lite
+  gemini: gemini-2.5-flash
