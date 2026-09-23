@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo } from "react";
 import { CompanySelect, DateRangeFilter, ExchangeFilter, VersionSelect, ViewTabs } from "@/components/dashboard/Controls";
+import { AgentAnalyst } from "@/components/agents/AgentAnalyst";
 import { DetailedView } from "@/components/dashboard/DetailedView";
 import { KpiSkeleton, StatusBar, SyncProgress } from "@/components/dashboard/Parts";
 import { CompanyHeader, SummaryView } from "@/components/dashboard/SummaryView";
@@ -14,7 +15,7 @@ import { Button, Card, CardBody, ErrorNote, Skeleton } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
 import type { Dashboard, Exchange, Preset, SyncStatus, ViewMode } from "@/lib/dashboard";
 
-const VIEWS: ViewMode[] = ["summary", "detailed", "versions"];
+const VIEWS: ViewMode[] = ["summary", "detailed", "agents", "versions"];
 
 function DashboardSkeleton() {
   return (
@@ -169,6 +170,7 @@ function CompanyDashboard() {
         <div role="tabpanel" id={`panel-${view}`} aria-labelledby={`tab-${view}`} key={`${view}-${data.version?.id ?? "live"}`} className="motion-fade">
           {view === "summary" && <SummaryView data={data} />}
           {view === "detailed" && <DetailedView data={data} />}
+          {view === "agents" && <AgentAnalyst symbol={data.identity.symbol} company={data.identity.company} />}
           {view === "versions" && <VersionHistory data={data} from={data.range.from} to={data.range.to} onView={(id) => update({ version: String(id), exchange: null, view: null })} />}
         </div>
       </div>

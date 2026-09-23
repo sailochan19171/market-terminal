@@ -97,6 +97,12 @@ const HELP = `Indian market data pipeline (BSE + NSE)
   nse-indices [--no-constituents]
   nse-corporate [window] [--only a,b]
   nse-sync-all [window] [--no-raw]
+  watch [--every 60] [--minutes N] [--no-orders]
+                                 watch BSE announcements live; writes new filings as they appear and
+                                 reads each new order filing into figures
+  watch [--every 60] [--minutes N] [--no-orders]
+                                 watch BSE announcements live; writes new filings as they appear and
+                                 reads each new order filing into figures
   publish                        push new and changed rows to the hosted Turso database
   publish init --from FILE       start publishing from the snapshot that was uploaded to Turso
   publish live                   publish the live market pulse once
@@ -174,6 +180,28 @@ async function run(command: string, pos: string[], f: Flags, db: Db): Promise<nu
         const rows = await bseAnnouncements.fetchScrip(new BSEClient(), str(f, "scrip")!, start, end);
         print(`announcements: ${db.upsert("announcement", rows as never[])} rows`);
       } else print(`announcements: ${await C.announcements(db, windowOf(f), { refetch: Boolean(f.refetch) })} rows`);
+      return 0;
+    }
+    case "watch": {
+      // The live announcement watcher: new filings within a minute, order filings read as they land.
+      const { watch } = await import("./bse/live");
+      const seen = await watch(db, {
+        intervalMs: (num(f, "every") ?? 60) * 1000,
+        runForMs: num(f, "minutes") ? num(f, "minutes")! * 60_000 : undefined,
+        readOrders: f["no-orders"] !== true,
+      });
+      print(`watch: ${seen.polls} polls, ${seen.filings} new filings, ${seen.orders} order wins`);
+      return 0;
+    }
+    case "watch": {
+      // The live announcement watcher: new filings within a minute, order filings read as they land.
+      const { watch } = await import("./bse/live");
+      const seen = await watch(db, {
+        intervalMs: (num(f, "every") ?? 60) * 1000,
+        runForMs: num(f, "minutes") ? num(f, "minutes")! * 60_000 : undefined,
+        readOrders: f["no-orders"] !== true,
+      });
+      print(`watch: ${seen.polls} polls, ${seen.filings} new filings, ${seen.orders} order wins`);
       return 0;
     }
     case "corp-actions":

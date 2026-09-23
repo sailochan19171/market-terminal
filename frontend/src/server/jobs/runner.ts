@@ -11,6 +11,7 @@ import { companyQueueLoop, dataLoop, type StopSignal } from "./worker";
 import { schedulerLoop } from "./scheduler";
 import { dailySteps } from "./steps";
 import { publishDataLoop, publishLiveLoop } from "./publishLoop";
+import { watchLoop } from "./watchLoop";
 import { backfillLoop } from "./backfill";
 import { newsLoop } from "./news";
 
@@ -44,7 +45,7 @@ async function main() {
   state.mark(db, "runner", { status: "running", last_started: new Date().toISOString(), pid: process.pid, message: null });
 
   // The publish loops do nothing unless Turso credentials are configured for a hosted copy.
-  const loops: Promise<void>[] = [companyQueueLoop(db, stop), schedulerLoop(db, dailySteps, stop), publishDataLoop(stop), publishLiveLoop(stop), backfillLoop(db, stop), newsLoop(db, stop)];
+  const loops: Promise<void>[] = [companyQueueLoop(db, stop), schedulerLoop(db, dailySteps, stop), publishDataLoop(stop), publishLiveLoop(stop), backfillLoop(db, stop), newsLoop(db, stop), watchLoop(db, stop)];
   // The Python worker may still be running during the switch-over; two parsers would fight over the same rows.
   const legacy = lock.lockOwner("fundamentals_run");
   if (legacy) log.warn(`the Python data worker (pid ${legacy}) is still running; the TypeScript data loop stays off until it stops`);

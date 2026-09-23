@@ -21,8 +21,10 @@ import { buildPulse } from "../api/live";
 
 const log = logger("publish");
 
+// `fresh`: a table this PC created after the hosted copy was uploaded, so there is nothing in the snapshot to
+// start from - its first publish sends every row it holds.
 type Spec =
-  | { table: string; mode: "stamp"; column: string; omit?: string[]; window?: { column: string; years: number } }
+  | { table: string; mode: "stamp"; column: string; omit?: string[]; window?: { column: string; years: number }; fresh?: true }
   | { table: string; mode: "date"; column: string }
   | { table: string; mode: "full"; ignore: string[] };
 
@@ -30,13 +32,13 @@ export const SPECS: Spec[] = [
   { table: "scrip", mode: "stamp", column: "updated_at" },
   { table: "bse_index", mode: "stamp", column: "updated_at" },
   { table: "corp_action", mode: "stamp", column: "fetched_at" },
-  { table: "announcement", mode: "stamp", column: "fetched_at", window: { column: "news_dt", years: 2 } },
+  { table: "announcement", mode: "stamp", column: "fetched_at" },   // the whole history is published, not a window
   { table: "announcement_day", mode: "stamp", column: "fetched_at", window: { column: "day", years: 2 } },
   { table: "bhavcopy_day", mode: "stamp", column: "fetched_at", window: { column: "trade_date", years: 5 } },
   { table: "nse_symbol", mode: "stamp", column: "updated_at" },
   { table: "nse_index", mode: "stamp", column: "updated_at" },
   { table: "nse_index_constituent", mode: "stamp", column: "updated_at" },
-  { table: "nse_announcement", mode: "stamp", column: "fetched_at", window: { column: "ann_dt", years: 2 } },
+  { table: "nse_announcement", mode: "stamp", column: "fetched_at" },
   { table: "nse_corp_action", mode: "stamp", column: "fetched_at", window: { column: "ex_date", years: 5 } },
   { table: "nse_board_meeting", mode: "stamp", column: "fetched_at", window: { column: "meeting_dt", years: 2 } },
   { table: "nse_financial_result", mode: "stamp", column: "fetched_at" },
@@ -53,6 +55,9 @@ export const SPECS: Spec[] = [
   { table: "index_value", mode: "date", column: "as_of" },
   { table: "nse_index_value", mode: "date", column: "as_of" },
   { table: "company_metrics", mode: "full", ignore: ["updated_at"] },
+  // Order wins read out of the announcement PDFs, and which filings have already been read.
+  { table: "company_order", mode: "stamp", column: "extracted_at", window: { column: "announced_at", years: 2 }, fresh: true },
+  { table: "company_order_seen", mode: "stamp", column: "seen_at", fresh: true },
   // Research documents: the hosted site searches these to answer questions.
   { table: "kb_doc", mode: "stamp", column: "updated_at" },
   // New analysis versions (scheduled ones follow new results). Ids are assigned by the hosted database, since
@@ -142,8 +147,12 @@ function publishTable(local: Db, remote: Db, state: Db, spec: Spec): number {
 
   let mark = state.scalar<string>("SELECT mark FROM publish_mark WHERE tbl = ?", [spec.table]);
   if (mark === null) {
-    log.warn(`${spec.table}: no publish mark; run "publish init --from <uploaded snapshot>" first`);
-    return 0;
+    if (spec.mode !== "stamp" || !spec.fresh) {
+      log.warn(`${spec.table}: no publish mark; run "publish init --from <uploaded snapshot>" first`);
+      return 0;
+    }
+    log.info(`${spec.table}: first publish, sending every row`);
+    mark = "";
   }
   const skip = spec.mode === "stamp" ? [spec.column] : [];
   let sent = 0;

@@ -1,0 +1,37 @@
+# Growth at a reasonable price (spec §3.9). Same workers as every other persona; only the weighting differs.
+id: lynch
+name: Lynch-style growth at a reasonable price
+inspired_by: Peter Lynch
+tagline: Earnings growth you can understand, bought at a price that does not already assume it
+system_prompt: |
+  You write an educational analysis inspired by the investing principles of Peter Lynch: know what you own and
+  why. Focus on the pace and quality of earnings growth, whether the P/E is reasonable for that growth (the PEG),
+  whether inventories and receivables are growing faster than sales, and whether the balance sheet can carry the
+  business through a bad year. Classify the company in plain words (slow grower, stalwart, fast grower, cyclical,
+  turnaround, asset play) from the figures. Curious, practical, conversational language. You are not Peter Lynch
+  and never quote him.
+key_metrics:
+  - peg
+  - epsCagr5y
+  - revenueCagr5y
+  - pe
+  - daysInventoryOutstanding
+  - daysSalesOutstanding
+  - debtToEquity
+  - netMargin
+weights:
+  fundamental: 0.35
+  valuation: 0.30
+  technical: 0.10
+  qualitative: 0.25
+dcf_growth_cap: 0.15
+required_margin_of_safety: 0.10
+thresholds:
+  roe: 0.12
+  netMargin: 0.08
+  debtToEquity: 1.0
+  interestCoverage: 3
+research_questions:
+  - What kind of company is this - slow grower, stalwart, fast grower, cyclical or turnaround?
+  - Is growth coming from the core business, and can it continue?
+  - Are inventories or receivables running ahead of sales?

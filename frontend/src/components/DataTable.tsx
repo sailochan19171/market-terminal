@@ -169,7 +169,7 @@ export function DataTable<T>({
                       c.align === "right" ? "text-right" : "text-left",
                       canSort && "cursor-pointer select-none hover:text-slate-900 dark:hover:text-white",
                       on && "text-indigo-700 dark:text-indigo-300",
-                      c.sticky && "sticky left-0 z-10 bg-white dark:bg-slate-900",
+                      c.sticky && "sticky left-0 z-20 bg-slate-50 dark:bg-slate-900",
                     )}
                     onClick={() => clickSort(c.key)}
                   >
@@ -195,7 +195,7 @@ export function DataTable<T>({
               <tr
                 key={rowKey(row, i + rowOffset)}
                 className={clsx(
-                  "border-b border-slate-100 transition-colors last:border-0 hover:bg-slate-50 dark:border-slate-800/70 dark:hover:bg-slate-800/40",
+                  "group border-b border-slate-100 transition-colors last:border-0 hover:bg-slate-50 dark:border-slate-800/70 dark:hover:bg-slate-800/40",
                   highlight?.(row) && "bg-indigo-50/60 dark:bg-indigo-500/10",
                 )}
               >
@@ -207,7 +207,10 @@ export function DataTable<T>({
                       pad,
                       "whitespace-nowrap",
                       c.align === "right" ? "tabular text-right" : "text-left",
-                      c.sticky && "sticky left-0 bg-inherit",
+                      // A pinned column needs a solid background of its own: with bg-inherit the row behind it
+                      // shows through and the two columns overlap as soon as the table is scrolled sideways.
+                      c.sticky && "sticky left-0 z-10 bg-white group-hover:bg-slate-50 dark:bg-slate-900 dark:group-hover:bg-slate-800/40",
+                      c.sticky && highlight?.(row) && "bg-indigo-50/60 group-hover:bg-indigo-50/60 dark:bg-indigo-500/10 dark:group-hover:bg-indigo-500/10",
                       c.className,
                     )}
                   >

@@ -1,0 +1,136 @@
+# US GAAP (and IFRS, for foreign filers on SEC EDGAR) tags mapped to the internal schema (spec §5.0, §5.2).
+# Each internal field lists XBRL concepts in priority order; for every period the first concept with a value is
+# used, because companies change tags over the years (Revenues -> RevenueFromContractWithCustomer...).
+duration:
+  revenue:
+    - us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax
+    - us-gaap:Revenues
+    - us-gaap:RevenueFromContractWithCustomerIncludingAssessedTax
+    - us-gaap:SalesRevenueNet
+    - us-gaap:SalesRevenueGoodsNet
+    - ifrs-full:Revenue
+  cost_of_goods_sold:
+    - us-gaap:CostOfGoodsAndServicesSold
+    - us-gaap:CostOfRevenue
+    - us-gaap:CostOfGoodsSold
+    - ifrs-full:CostOfSales
+  gross_profit:
+    - us-gaap:GrossProfit
+    - ifrs-full:GrossProfit
+  operating_income:
+    - us-gaap:OperatingIncomeLoss
+    - ifrs-full:ProfitLossFromOperatingActivities
+  pretax_income:
+    - us-gaap:IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest
+    - us-gaap:IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments
+    - ifrs-full:ProfitLossBeforeTax
+  interest_expense:
+    - us-gaap:InterestExpense
+    - us-gaap:InterestExpenseNonoperating
+    - us-gaap:InterestExpenseDebt
+    - ifrs-full:FinanceCosts
+  tax_expense:
+    - us-gaap:IncomeTaxExpenseBenefit
+    - ifrs-full:IncomeTaxExpenseContinuingOperations
+  net_income:
+    - us-gaap:NetIncomeLoss
+    - us-gaap:NetIncomeLossAvailableToCommonStockholdersBasic
+    - us-gaap:ProfitLoss
+    - ifrs-full:ProfitLossAttributableToOwnersOfParent
+    - ifrs-full:ProfitLoss
+  eps_diluted:
+    - us-gaap:EarningsPerShareDiluted
+    - us-gaap:EarningsPerShareBasicAndDiluted
+    - ifrs-full:DilutedEarningsLossPerShare
+  shares_diluted:
+    - us-gaap:WeightedAverageNumberOfDilutedSharesOutstanding
+    - ifrs-full:WeightedAverageNumberOfSharesOutstandingBasicAndDiluted
+  depreciation:
+    - us-gaap:DepreciationDepletionAndAmortization
+    - us-gaap:DepreciationAndAmortization
+    - us-gaap:Depreciation
+    - ifrs-full:DepreciationAndAmortisationExpense
+  operating_cash_flow:
+    - us-gaap:NetCashProvidedByUsedInOperatingActivities
+    - ifrs-full:CashFlowsFromUsedInOperatingActivities
+  capital_expenditure:
+    - us-gaap:PaymentsToAcquirePropertyPlantAndEquipment
+    - us-gaap:PaymentsToAcquireProductiveAssets
+    - ifrs-full:PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities
+  dividends_paid:
+    - us-gaap:PaymentsOfDividends
+    - us-gaap:PaymentsOfDividendsCommonStock
+    - ifrs-full:DividendsPaidClassifiedAsFinancingActivities
+  share_buybacks:
+    - us-gaap:PaymentsForRepurchaseOfCommonStock
+  net_interest_income:
+    - us-gaap:InterestIncomeExpenseNet
+  other_income:
+    - us-gaap:NoninterestIncome
+  operating_expenses:
+    - us-gaap:NoninterestExpense
+instant:
+  cash:
+    - us-gaap:CashAndCashEquivalentsAtCarryingValue
+    - us-gaap:CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents
+    - ifrs-full:CashAndCashEquivalents
+  short_term_investments:
+    - us-gaap:ShortTermInvestments
+    - us-gaap:MarketableSecuritiesCurrent
+    - us-gaap:AvailableForSaleSecuritiesDebtSecuritiesCurrent
+  receivables:
+    - us-gaap:AccountsReceivableNetCurrent
+    - us-gaap:ReceivablesNetCurrent
+    - ifrs-full:TradeAndOtherCurrentReceivables
+  inventory:
+    - us-gaap:InventoryNet
+    - ifrs-full:Inventories
+  current_assets:
+    - us-gaap:AssetsCurrent
+    - ifrs-full:CurrentAssets
+  total_assets:
+    - us-gaap:Assets
+    - ifrs-full:Assets
+  payables:
+    - us-gaap:AccountsPayableCurrent
+    - ifrs-full:TradeAndOtherCurrentPayables
+  current_liabilities:
+    - us-gaap:LiabilitiesCurrent
+    - ifrs-full:CurrentLiabilities
+  total_liabilities:
+    - us-gaap:Liabilities
+    - ifrs-full:Liabilities
+  shareholders_equity:
+    - us-gaap:StockholdersEquity
+    - us-gaap:StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest
+    - ifrs-full:EquityAttributableToOwnersOfParent
+  long_term_debt_noncurrent:
+    - us-gaap:LongTermDebtNoncurrent
+    - us-gaap:LongTermDebtAndCapitalLeaseObligations
+    - ifrs-full:NoncurrentPortionOfNoncurrentBorrowings
+  long_term_debt_current:
+    - us-gaap:LongTermDebtCurrent
+    - us-gaap:LongTermDebtAndCapitalLeaseObligationsCurrent
+    - ifrs-full:CurrentPortionOfNoncurrentBorrowings
+  short_term_borrowings:
+    - us-gaap:ShortTermBorrowings
+    - us-gaap:CommercialPaper
+    - ifrs-full:ShorttermBorrowings
+  long_term_debt_total:
+    - us-gaap:LongTermDebt
+    - ifrs-full:Borrowings
+  loans:
+    - us-gaap:FinancingReceivableExcludingAccruedInterestAfterAllowanceForCreditLoss
+    - us-gaap:LoansAndLeasesReceivableNetReportedAmount
+    - us-gaap:LoansAndLeasesReceivableNetOfDeferredIncome
+    - us-gaap:NotesReceivableNet
+  deposits:
+    - us-gaap:Deposits
+  securities_available_for_sale:
+    - us-gaap:DebtSecuritiesAvailableForSaleExcludingAccruedInterest
+    - us-gaap:AvailableForSaleSecuritiesDebtSecurities
+  securities_held_to_maturity:
+    - us-gaap:DebtSecuritiesHeldToMaturityExcludingAccruedInterestAfterAllowanceForCreditLoss
+    - us-gaap:HeldToMaturitySecurities
+shares_outstanding:
+  - dei:EntityCommonStockSharesOutstanding

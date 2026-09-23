@@ -127,3 +127,12 @@ export async function alerts(db: Db, opts: { rule?: string; channels?: string[];
   }
   return { hits: hits.length, fresh: fresh.length, sent, channels: channels.map((c) => c.name) };
 }
+
+/** Read the order-win announcements filed since the last run, and turn their PDFs into figures. */
+export async function orders(db: Db, opts: { days?: number; limit?: number; useModel?: boolean } = {}) {
+  const { fillMissingCustomers, runOrders } = await import("../orders/extract");
+  const run = await runOrders(db, { days: opts.days ?? 30, limit: opts.limit ?? 60, concurrency: 3, deadlineMs: 20 * 60_000, useModel: opts.useModel });
+  // Then catch up on the filings whose customer the patterns could not find, while the day's model quota lasts.
+  const customersFilled = opts.useModel === false ? 0 : await fillMissingCustomers(db, { limit: 40, deadlineMs: 15 * 60_000 });
+  return { ...run, customersFilled };
+}

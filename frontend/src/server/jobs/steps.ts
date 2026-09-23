@@ -33,6 +33,8 @@ export function dailySteps(): Step[] {
     { name: "broker", run: async () => (await C.broker(db))?.holdings ?? 0 },
     // Derived figures and stored analyses, so dashboards show the new session.
     { name: "metrics", run: () => C.metrics(db) },
+    // Order wins: the PDFs filed under the exchanges' order categories, read into figures.
+    { name: "orders", run: async () => (await C.orders(db)).orders },
     { name: "analyses", run: () => C.analyses(db) },
     // Research documents follow the new figures, so answers quote the latest filings.
     { name: "knowledge-base", run: async () => buildAll(db).docs },

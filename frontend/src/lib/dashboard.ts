@@ -4,7 +4,7 @@ import type { PriceQuote } from "@/components/AsOf";
 import { countIN, inr, inrCrore, isNum, num, pct, percent, shiftDate, type Num } from "./format";
 
 export type Exchange = "NSE" | "BSE";
-export type ViewMode = "summary" | "detailed" | "versions";
+export type ViewMode = "summary" | "detailed" | "agents" | "versions";
 
 export interface Identity {
   key: string; symbol: string | null; bseCode: string | null; bseTicker: string | null; isin: string | null;

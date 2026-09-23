@@ -8,6 +8,10 @@ const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR ?? ".next",
   // Loaded at runtime by Node rather than bundled: pdfjs ships its own worker and wasm files.
   serverExternalPackages: ["pdfjs-dist"],
+  // Personas and scoring weights are YAML read at runtime (spec §3.9), so they travel with the functions that read them.
+  outputFileTracingIncludes: {
+    "/api/v2/agents/**": ["./config/**/*.yaml"],
+  },
 };
 
 export default nextConfig;

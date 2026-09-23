@@ -1,0 +1,53 @@
+# Per-agent settings (spec §7.3). The model tier follows §7.1: a strong model plans and writes, a small fast
+# one handles the input layer, the news reading and the valuation assumptions. `model: default` uses LLM_MODEL
+# (or the provider's default); name a model to override it. Keys stay in environment variables, never here.
+#
+# Timeouts (§7.3): data fetch 20 s, each worker 30 s, full request target under 60 s.
+request:
+  target_seconds: 60
+  max_llm_calls: 12
+  max_loops: 2
+data_agent:
+  timeout_ms: 20000
+  max_retries: 3
+input_layer:
+  model: small
+  temperature: 0
+  timeout_ms: 15000
+  max_retries: 1
+orchestrator:
+  model: default
+  temperature: 0
+  timeout_ms: 20000
+  max_retries: 1
+valuation_agent:
+  model: small
+  temperature: 0
+  timeout_ms: 30000
+  max_retries: 1
+news_moat_agent:
+  model: small
+  temperature: 0
+  timeout_ms: 30000
+  max_retries: 1
+validator:
+  timeout_ms: 5000
+synthesis:
+  model: default
+  temperature: 0.3
+  timeout_ms: 40000
+  max_retries: 2
+ratio_engine:
+  timeout_ms: 30000
+technical_agent:
+  timeout_ms: 30000
+# When the strong model is rate-limited or out of daily quota, retry on the small tier (its own quota) before
+# writing the answer from the data alone. Counts against the 12-call budget.
+fallback_to_small_model: true
+# What "small" means for each provider. A tier on a separate model also has its own rate limit on most hosts.
+small_models:
+  groq: openai/gpt-oss-20b
+  # cerebras: no small tier named - its free daily quota is large enough to run every agent on gpt-oss-120b
+  openai: gpt-5.6-luna-mini
+  anthropic: claude-haiku-4-5-20251001
+  gemini: gemini-2.5-flash-lite

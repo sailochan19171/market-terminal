@@ -1,0 +1,69 @@
+# The data pipeline, running on GitHub's machines instead of one PC.
+#
+# Every 15 minutes it pulls the exchanges' latest announcements, reads any new order filing out of its PDF, and
+# writes both straight into the hosted Turso database the site reads from (MARKET_DB=turso). So the site keeps
+# gaining data whether or not any particular computer is switched on.
+#
+# The PC at home can keep running the same jobs: both write the same rows keyed by announcement id, so whichever
+# gets there first wins and the other simply finds nothing new.
+#
+# Secrets this needs (Settings -> Secrets and variables -> Actions):
+#   TURSO_DATABASE_URL, TURSO_AUTH_TOKEN   the hosted database
+#   LLM_API_KEY                            the model that reads the order PDFs (optional: without it the
+#                                          pattern reader still fills in values and customers)
+name: Market data
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"     # every 15 minutes, around the clock
+  workflow_dispatch: {}        # and on demand, from the Actions tab
+
+concurrency:
+  group: market-data
+  cancel-in-progress: false    # never cut a run short; queue the next one instead
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      MARKET_DB: turso
+      MARKET_JOBS: "off"
+      TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+      TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+      LLM_PROVIDER: groq
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+      LLM_MODEL: openai/gpt-oss-120b
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      # BSE announcements for the last few days. A day the exchange answers with nothing stays open and is
+      # tried again on the next run, so a blocked request never loses a day's filings.
+      - name: BSE announcements
+        run: npx tsx src/server/cli.ts announcements --years 0.02
+
+      # NSE's own feed. Its API is stricter about where a request comes from, so a failure here is logged and
+      # the run carries on with what BSE gave us.
+      - name: NSE announcements
+        continue-on-error: true
+        run: npx tsx src/server/cli.ts nse-corporate --only announcements
+
+      # Every new "Award of Order / Receipt of Order" filing, read out of its PDF into customer, value and period.
+      - name: Read new order filings
+        run: npx tsx scripts/orders-backfill.ts 3 40
+
+      - name: What the run found
+        if: always()
+        run: npx tsx scripts/pipeline-status.ts

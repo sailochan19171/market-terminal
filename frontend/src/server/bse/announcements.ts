@@ -117,26 +117,34 @@ export async function fetchScrip(client: BSEClient, scripCd: string | number, st
 export interface AnnouncementSyncOptions { refetch?: boolean }
 
 /** Walk the range day by day (ISO dates, inclusive). Returns rows written. */
+/** A day is only finished when it actually produced filings; an empty answer is retried on the next run. */
+const REVISIT_DAYS = 3;
+
 export async function sync(client: BSEClient, db: Db, start: string, end: string, opts: AnnouncementSyncOptions = {}): Promise<number> {
   const done = new Set<string>();
   if (!opts.refetch) {
-    for (const r of db.all<{ day: string }>("SELECT day FROM announcement_day WHERE status = 'ok'")) done.add(r.day);
+    // BSE sometimes answers a day with nothing at all - a block, a timeout, a bad gateway. Marking that day
+    // finished loses every filing of that day for good, which is how four days of announcements went missing.
+    // Only a day that returned filings counts as done.
+    for (const r of db.all<{ day: string }>("SELECT day FROM announcement_day WHERE status = 'ok' AND rows > 0")) done.add(r.day);
   }
 
   let total = 0;
   const today = todayIso();
+  // The exchange keeps adding to a day after midnight (and corrects it), so the last few days are always re-pulled.
+  const revisitFrom = addDays(today, -REVISIT_DAYS);
   for (let key = start; key <= end; key = addDays(key, 1)) {
-    // Always re-pull today: more filings land through the day.
-    if (done.has(key) && key !== today) continue;
+    if (done.has(key) && key < revisitFrom) continue;
 
     const rows = await fetchDay(client, key);
     const n = db.transaction(() => {
       const written = rows.length ? db.upsert("announcement", rows as unknown as Record<string, unknown>[]) : 0;
-      db.upsert("announcement_day", [{ day: key, status: "ok", rows: written, fetched_at: now() }]);
+      db.upsert("announcement_day", [{ day: key, status: written ? "ok" : "empty", rows: written, fetched_at: now() }]);
       return written;
     });
     total += n;
     if (n) log.info(`announcements ${key} -> ${n} rows`);
+    else log.warn(`announcements ${key} -> nothing came back; the day stays open and will be tried again`);
   }
   return total;
 }

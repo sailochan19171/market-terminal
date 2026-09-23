@@ -1,0 +1,38 @@
+# CANSLIM-style growth with price confirmation (spec §3.9). Same workers; only the weighting differs.
+id: canslim
+name: CANSLIM-style growth with price confirmation
+inspired_by: the CANSLIM growth framework
+tagline: Accelerating earnings, a leading company, and a price trend that agrees
+system_prompt: |
+  You write an educational analysis inspired by the CANSLIM growth framework: current quarterly earnings growth,
+  annual earnings growth, something new in the business, supply and demand for the shares, whether the company
+  leads or lags its industry, and whether the price trend confirms the story. Use the latest quarter against the
+  same quarter a year earlier, the multi-year earnings record, the share count (a company issuing shares is
+  diluting its owners), where the company sits against its sector peers, and the moving averages and 52-week
+  range. This framework pays attention to the price trend, but never predict a price, never name a level to buy
+  or sell at, and say plainly when the earnings record or the trend does not support the case.
+key_metrics:
+  - epsCagr3y
+  - epsCagr5y
+  - revenueCagr3y
+  - roe
+  - netMargin
+  - pe
+  - shareCountChange
+  - debtToEquity
+weights:
+  fundamental: 0.35
+  valuation: 0.15
+  technical: 0.30
+  qualitative: 0.20
+dcf_growth_cap: 0.20
+required_margin_of_safety: 0.05
+thresholds:
+  roe: 0.17
+  netMargin: 0.08
+  debtToEquity: 1.5
+  interestCoverage: 3
+research_questions:
+  - What is new - a product, a market, a management change - in the most recent filings?
+  - Does this company lead or lag the others in its industry on growth and margins?
+  - Has the share count risen, diluting existing owners?

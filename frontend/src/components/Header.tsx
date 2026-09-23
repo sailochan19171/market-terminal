@@ -2,9 +2,9 @@
 
 import clsx from "clsx";
 import {
-  Activity, BarChart3, Scale, Bell, BookOpen, Briefcase, Building2, CalendarDays, ChevronDown, CircleDollarSign, FileBarChart,
+  Activity, BarChart3, Bot, Scale, Bell, BookOpen, Briefcase, Building2, CalendarDays, ChevronDown, CircleDollarSign, FileBarChart,
   FileText, Flame, Gauge, Grid3x3, Layers, LineChart, ListFilter, Menu, Moon, PieChart, Search, Star, Sun, TrendingUp,
-  Sparkles, UserCheck, Users, X, type LucideIcon,
+  PackageCheck, Sparkles, UserCheck, Users, X, type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -66,6 +66,7 @@ const MENU: MenuGroup[] = [
         { href: "/board-meetings", label: "Board meetings", description: "Upcoming results, dividends, fund raising", icon: CalendarDays },
       ] },
       { title: "Actions and ownership", items: [
+        { href: "/orders", label: "Order wins", description: "Contracts won, read out of the announcement PDFs", icon: PackageCheck },
         { href: "/corporate-actions", label: "Corporate actions", description: "Dividends, bonus, splits, rights", icon: CircleDollarSign },
         { href: "/shareholding", label: "Shareholding changes", description: "Promoter, FII and DII moves", icon: Users },
         { href: "/insider", label: "Insider trading", description: "Disclosed trades by insiders", icon: UserCheck },
@@ -84,9 +85,10 @@ const MENU: MenuGroup[] = [
     ],
   },
   {
-    label: "Investors", match: ["/portfolio", "/watchlist", "/alerts", "/assistant"],
+    label: "Investors", match: ["/portfolio", "/watchlist", "/alerts", "/assistant", "/agents"],
     sections: [
       { title: "Your space", items: [
+        { href: "/agents", label: "AI analyst agents", description: "Buffett- and Lynch-style analysis from 40+ ratios, valuation and filings", icon: Bot },
         { href: "/assistant", label: "AI research assistant", description: "Ask about any company; answers cite the filing", icon: Sparkles },
         { href: "/portfolio", label: "Portfolio", description: "Holdings, allocation and gains", icon: Briefcase },
         { href: "/watchlist", label: "Watchlist", description: "Companies you follow", icon: Star },
@@ -97,7 +99,7 @@ const MENU: MenuGroup[] = [
   },
 ];
 
-function ThemeToggle() {
+export function ThemeToggle() {
   const [dark, setDark] = useState(false);
   useEffect(() => {
     let stored: string | null = null;
@@ -312,6 +314,8 @@ export function Header() {
   }, []);
   const isActive = (g: MenuGroup) => g.match.some((m) => pathname.startsWith(m));
 
+  // The analyst agents are an app of their own, with their own full-screen shell.
+  if (pathname?.startsWith("/agents")) return null;
   return (
     <header className={clsx("sticky top-0 z-40 border-b bg-white/90 backdrop-blur transition-shadow supports-[backdrop-filter]:bg-white/80 dark:bg-slate-950/85",
       scrolled ? "border-slate-200 shadow-[0_6px_20px_-12px_rgba(15,23,42,0.25)] dark:border-slate-800" : "border-slate-200 dark:border-slate-800")}>
@@ -330,6 +334,14 @@ export function Header() {
         <Link href="/assistant" title="Ask the research assistant"
           className="hidden items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-sm font-semibold text-indigo-700 transition hover:border-indigo-400 sm:inline-flex dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300">
           <Sparkles size={15} aria-hidden /> Ask AI
+        </Link>
+        <Link href="/agents" title="AI analyst agents: persona-led multi-agent analysis"
+          className="hidden items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-indigo-400 hover:text-indigo-700 md:inline-flex dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+          <Bot size={15} aria-hidden /> Agents
+        </Link>
+        <Link href="/orders" title="Order wins read out of announcement PDFs"
+          className="hidden items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-emerald-400 hover:text-emerald-700 md:inline-flex dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+          <PackageCheck size={15} aria-hidden /> Orders
         </Link>
         <ThemeToggle />
         <SignIn />
@@ -350,6 +362,8 @@ export function Header() {
 }
 
 export function Footer() {
+  const pathname = usePathname();
+  if (pathname?.startsWith("/agents")) return null;
   return (
     <footer className="mt-16 border-t border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
       <div className="mx-auto grid max-w-[1400px] gap-8 px-4 py-10 sm:grid-cols-2 sm:px-6 lg:grid-cols-6">

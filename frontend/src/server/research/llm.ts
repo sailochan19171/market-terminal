@@ -8,7 +8,15 @@ import { logger } from "../log";
 
 const log = logger("llm");
 
-export const available = () => Boolean(config.LLM_API_KEY);
+/** One model host: which provider, its key, and optionally a model and endpoint of its own. */
+export interface Host { provider: string; key: string; model?: string; baseUrl?: string }
+
+export const primaryHost = (): Host => ({ provider: config.LLM_PROVIDER, key: config.LLM_API_KEY, model: config.LLM_MODEL || undefined, baseUrl: config.LLM_BASE_URL || undefined });
+/** The host to switch to when the primary is rate-limited, out of quota or unreachable; null when none is set. */
+export const backupHost = (): Host | null =>
+  config.LLM_BACKUP_PROVIDER && config.LLM_BACKUP_API_KEY ? { provider: config.LLM_BACKUP_PROVIDER, key: config.LLM_BACKUP_API_KEY, model: config.LLM_BACKUP_MODEL || undefined } : null;
+
+export const available = () => Boolean(config.LLM_API_KEY || backupHost());
 
 // Anthropic and Gemini have their own request shapes; everything else here speaks the OpenAI chat-completions
 // dialect, so Groq, Together, OpenRouter, DeepSeek or a model on this machine all work by naming the provider
@@ -18,6 +26,7 @@ const ENDPOINTS: Record<string, string> = {
   openai: "https://api.openai.com/v1/chat/completions",
   gemini: "https://generativelanguage.googleapis.com/v1beta/models",
   groq: "https://api.groq.com/openai/v1/chat/completions",
+  cerebras: "https://api.cerebras.ai/v1/chat/completions",
   together: "https://api.together.xyz/v1/chat/completions",
   openrouter: "https://openrouter.ai/api/v1/chat/completions",
   deepseek: "https://api.deepseek.com/chat/completions",
@@ -29,6 +38,7 @@ const DEFAULT_MODEL: Record<string, string> = {
   openai: "gpt-5.6-luna",
   gemini: "gemini-2.5-flash",
   groq: "openai/gpt-oss-120b",
+  cerebras: "gpt-oss-120b",
 };
 
 const shape = (provider: string) => (provider === "anthropic" || provider === "gemini" ? provider : "openai");
@@ -69,22 +79,52 @@ export interface Completion {
 
 /** Ask the configured model. `text` is null when no key is set or the call fails; the rest still describes it. */
 export async function complete(question: string, context: string): Promise<Completion> {
+  return chat({ system: SYSTEM, user: `CONTEXT\n${context}\n\nQUESTION\n${question}` });
+}
+
+export interface ChatOptions {
+  system: string;
+  user: string;
+  /** Ask for a JSON object back (JSON mode where the host supports it). */
+  json?: boolean;
+  temperature?: number;
+  maxTokens?: number;
+  /** A different model from the configured default - the agents use a small one for simple jobs. */
+  model?: string;
+  timeoutMs?: number;
+  /** Retries on rate limits, server errors and dropped connections, with exponential backoff. */
+  maxRetries?: number;
+  /** The longest rate-limit pause worth waiting for; past it the call returns so the caller can try elsewhere. */
+  maxWaitMs?: number;
+  /** Call this host instead of the configured primary. */
+  host?: Host;
+}
+
+/** One call to the configured model with any system prompt - what the agents use. */
+export async function chat(opts: ChatOptions): Promise<Completion> {
   const startedAt = Date.now();
-  if (!available()) return { text: null, model: "", promptTokens: null, completionTokens: null, latencyMs: 0, error: "no key configured" };
-  const provider = config.LLM_PROVIDER;
+  const host = opts.host ?? primaryHost();
+  if (!host.key) return { text: null, model: "", promptTokens: null, completionTokens: null, latencyMs: 0, error: "no key configured" };
+  const provider = host.provider;
   const kind = shape(provider);
-  const model = config.LLM_MODEL || DEFAULT_MODEL[provider] || DEFAULT_MODEL.openai;
-  const prompt = `CONTEXT\n${context}\n\nQUESTION\n${question}`;
+  const model = opts.model || host.model || DEFAULT_MODEL[provider] || DEFAULT_MODEL.openai;
+  const SYSTEM = opts.system;
+  const prompt = opts.user;
+  const maxTokens = opts.maxTokens ?? MAX_TOKENS;
   const body: Record<string, unknown> =
     kind === "anthropic"
-      ? { model, max_tokens: MAX_TOKENS, system: SYSTEM, messages: [{ role: "user", content: prompt }] }
+      ? { model, max_tokens: maxTokens, temperature: opts.temperature ?? 0.2, system: SYSTEM, messages: [{ role: "user", content: prompt }] }
       : kind === "gemini"
-        ? { systemInstruction: { parts: [{ text: SYSTEM }] }, contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: MAX_TOKENS } }
+        ? {
+          systemInstruction: { parts: [{ text: SYSTEM }] }, contents: [{ role: "user", parts: [{ text: prompt }] }],
+          generationConfig: { maxOutputTokens: maxTokens, temperature: opts.temperature ?? 0.2, ...(opts.json ? { responseMimeType: "application/json" } : {}) },
+        }
         : {
-          model, max_tokens: MAX_TOKENS, temperature: 0.2,
+          model, max_tokens: maxTokens, temperature: opts.temperature ?? 0.2,
           // Reasoning models spend the same budget thinking before they write, and a long research context can
           // use all of it, leaving the answer empty. Keep the thinking short; the reasoning is not shown anyway.
           ...(REASONING.test(model) ? { reasoning_effort: "low" } : {}),
+          ...(opts.json ? { response_format: { type: "json_object" } } : {}),
           messages: [{ role: "system", content: SYSTEM }, { role: "user", content: prompt }],
         };
 
@@ -96,23 +136,44 @@ export async function complete(question: string, context: string): Promise<Compl
     error,
   });
 
-  const base = config.LLM_BASE_URL || ENDPOINTS[provider];
+  const base = host.baseUrl || ENDPOINTS[provider];
   if (!base) throw new Error(`LLM_PROVIDER=${provider} is not a known host; set LLM_BASE_URL to its OpenAI-compatible endpoint`);
   const url = kind === "gemini" ? `${base}/${model}:generateContent` : base;
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (kind === "anthropic") Object.assign(headers, { "x-api-key": config.LLM_API_KEY, "anthropic-version": "2023-06-01" });
-  else if (kind === "gemini") headers["x-goog-api-key"] = config.LLM_API_KEY;
-  else headers.Authorization = `Bearer ${config.LLM_API_KEY}`;
+  if (kind === "anthropic") Object.assign(headers, { "x-api-key": host.key, "anthropic-version": "2023-06-01" });
+  else if (kind === "gemini") headers["x-goog-api-key"] = host.key;
+  else headers.Authorization = `Bearer ${host.key}`;
 
   try {
-    let res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(45_000) });
-    // Free tiers meter tokens by the minute, and a research context is not small. The host says how long to
-    // wait; waiting once is better than dropping the reader back to the written answer for a few seconds' burst.
-    if (res.status === 429) {
-      const wait = Math.min(Number(res.headers.get("retry-after") ?? 0) * 1000 || 4000, 12_000);
-      log.warn(`rate limited by ${provider}; retrying in ${Math.round(wait / 1000)}s`);
-      await new Promise((r) => setTimeout(r, wait));
-      res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(45_000) });
+    const timeout = opts.timeoutMs ?? 45_000;
+    const retries = opts.maxRetries ?? 1;
+    let res: Response | null = null;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(timeout) });
+      } catch (e) {
+        if (attempt >= retries) throw e;
+        const wait = 1000 * 2 ** attempt;
+        log.warn(`${provider} request failed (${(e as Error).message}); retrying in ${wait / 1000}s`);
+        await new Promise((r) => setTimeout(r, wait));
+        continue;
+      }
+      // Free tiers meter tokens by the minute. The host says how long to wait; otherwise back off exponentially.
+      if ((res.status === 429 || res.status >= 500) && attempt < retries) {
+        // A daily quota does not come back in twelve seconds; waiting only makes the reader wait.
+        if (res.status === 429) {
+          const peek = await res.clone().text().catch(() => "");
+          if (/per day|TPD|RPD|daily/i.test(peek)) break;
+        }
+        const wait = Math.min(Number(res.headers.get("retry-after") ?? 0) * 1000 || 2000 * 2 ** attempt, 12_000);
+        // A long wait costs more than it saves: with many jobs running, the caller does better switching to another
+        // model tier at once. Only short pauses are sat out.
+        if (res.status === 429 && wait > (opts.maxWaitMs ?? 12_000)) break;
+        log.warn(`${res.status === 429 ? "rate limited" : `HTTP ${res.status}`} by ${provider}; retrying in ${Math.round(wait / 1000)}s`);
+        await new Promise((r) => setTimeout(r, wait));
+        continue;
+      }
+      break;
     }
     const text = await res.text();
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);

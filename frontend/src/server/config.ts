@@ -73,6 +73,10 @@ export const config = {
   LLM_API_KEY: s("LLM_API_KEY"),
   LLM_MODEL: s("LLM_MODEL"),
   LLM_BASE_URL: s("LLM_BASE_URL"),
+  /** A second host the agents switch to when the first is rate-limited, out of quota or down (e.g. groq behind cerebras). */
+  LLM_BACKUP_PROVIDER: s("LLM_BACKUP_PROVIDER").toLowerCase(),
+  LLM_BACKUP_API_KEY: s("LLM_BACKUP_API_KEY"),
+  LLM_BACKUP_MODEL: s("LLM_BACKUP_MODEL"),
 
   /** Optional embeddings for the document library; without a key, documents are searched by words alone.
    *  EMBED_PROVIDER: openai | gemini | voyage, or any OpenAI-compatible host via EMBED_BASE_URL. */

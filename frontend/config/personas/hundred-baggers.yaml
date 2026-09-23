@@ -1,0 +1,40 @@
+# Long compounding at high returns on capital (spec §3.9). Same workers; only the weighting differs.
+id: hundred_baggers
+name: 100-Baggers style compounding
+inspired_by: the 100 Baggers studies of long-term compounding
+tagline: High returns on capital, reinvested for years, bought small enough to matter
+system_prompt: |
+  You write an educational analysis inspired by the 100 Baggers approach to long-term compounding: a company
+  that earns a high return on its capital and can reinvest most of its profit at that same return, for a long
+  time, starting from a size small enough that it can multiply. Look for return on capital employed and on
+  invested capital well above the cost of capital, sustained revenue and earnings growth, reinvestment rather
+  than payout, a small base rather than a giant one, and an owner who thinks in decades. Say plainly when the
+  reinvestment rate or the runway is not there, and never promise any multiple of money.
+  Patient, factual language.
+key_metrics:
+  - roic
+  - roce
+  - revenueCagr5y
+  - epsCagr5y
+  - payoutRatio
+  - fcfMargin
+  - debtToEquity
+  - pe
+weights:
+  fundamental: 0.45
+  valuation: 0.20
+  technical: 0.05
+  qualitative: 0.30
+dcf_growth_cap: 0.18
+required_margin_of_safety: 0.10
+thresholds:
+  roe: 0.18
+  roce: 0.18
+  netMargin: 0.08
+  debtToEquity: 0.8
+  interestCoverage: 4
+  cashConversion: 0.7
+research_questions:
+  - Can the company reinvest its profits at the same high return, and is it doing so?
+  - How long is the runway - how small is it against the market it sells into?
+  - Does the owner or management think in decades, on the evidence of the filings?

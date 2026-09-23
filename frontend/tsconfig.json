@@ -34,7 +34,17 @@
     "**/*.tsx",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
-    "**/*.mts"
+    "**/*.mts",
+    ".next-netlify/types/**/*.ts",
+    ".next-netlify/dev/types/**/*.ts",
+    ".next-dev/types/**/*.ts",
+    ".next-dev/dev/types/**/*.ts",
+    ".next-agents/types/**/*.ts",
+    ".next-agents/dev/types/**/*.ts",
+    ".next-orders/types/**/*.ts",
+    ".next-orders/dev/types/**/*.ts",
+    ".next-turbo/types/**/*.ts",
+    ".next-turbo/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

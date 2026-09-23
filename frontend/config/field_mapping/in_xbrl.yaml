@@ -1,0 +1,57 @@
+# Ind AS line items (as parsed from NSE XBRL filings) mapped to the internal schema (spec §5.0, §5.2).
+# Each internal field lists the parsed keys to try, in order; the first one present in a filing is used.
+# Quarterly results come from fixed columns (revenue, pbt, pat, eps...), so only the statements are mapped here.
+balance_sheet:
+  cash:
+    - cash
+  current_investments:
+    - current_investments
+  bank_cash:
+    - cash_rbi
+  bank_balances:
+    - bank_balances
+  receivables:
+    - receivables
+    - trade_receivables
+  inventory:
+    - inventories
+  current_assets:
+    - current_assets
+  total_assets:
+    - total_assets
+  payables:
+    - payables
+    - trade_payables
+  current_liabilities:
+    - current_liabilities
+  total_liabilities:
+    - total_liabilities
+  shareholders_equity:
+    - equity
+    - owners_equity
+  share_capital:
+    - share_capital
+  reserves:
+    - reserves
+  borrowings_noncurrent:
+    - borrowings_noncurrent
+  borrowings_current:
+    - borrowings_current
+  borrowings:
+    - borrowings
+  advances:
+    - advances
+  investments:
+    - investments
+  deposits:
+    - deposits
+cash_flow:
+  operating_cash_flow:
+    - cfo
+  capital_expenditure:
+    - capex
+  dividends_paid:
+    - dividends_paid
+  share_buybacks:
+    - buyback
+    - buy_back_of_shares

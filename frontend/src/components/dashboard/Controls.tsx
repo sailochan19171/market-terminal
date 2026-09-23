@@ -194,6 +194,7 @@ export function ViewTabs({ value, onChange, versionCount }: { value: ViewMode; o
   const tabs: { value: ViewMode; label: string }[] = [
     { value: "summary", label: "Summary" },
     { value: "detailed", label: "Detailed analysis" },
+    { value: "agents", label: "AI analysts" },
     { value: "versions", label: `Analysis history${versionCount ? ` (${versionCount})` : ""}` },
   ];
   const refs = useRef<(HTMLButtonElement | null)[]>([]);

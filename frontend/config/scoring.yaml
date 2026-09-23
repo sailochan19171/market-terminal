@@ -1,0 +1,48 @@
+# Category score weights (spec §4.7). Each score is a weighted average of where a ratio sits within its sector,
+# on a 0-100 scale; ratios where less is better are flipped. Tune here without touching code.
+#
+# Two sets of names appear in the spec and they are not the same thing, so keep them apart when reading a result:
+#   * here, and in the ratio report (§4.7): fundamental, growth, valuation, financial_health - scores built from
+#     the ratios alone;
+#   * in the answer the reader sees (§3.9): fundamental, valuation, technical, qualitative - the four the persona
+#     weights. Its "fundamental" is the average of the three ratio scores below (fundamental, financial health,
+#     growth), and its "technical" and "qualitative" come from the price and filings agents, not from this file.
+fundamental:
+  roe: 0.30
+  roce: 0.20
+  netMargin: 0.20
+  cashConversion: 0.15
+  assetTurnover: 0.15
+# Growth is scored on the 3-year figures, which have a sector comparison on file.
+growth:
+  revenueCagr3y: 0.40
+  operatingIncomeCagr3y: 0.40
+  epsCagr3y: 0.20
+valuation:
+  pe: 0.40
+  pb: 0.20
+  fcfYield: 0.20
+  dividendYield: 0.20
+financialHealth:
+  debtToEquity: 0.35
+  interestCoverage: 0.30
+  currentRatio: 0.20
+  netDebtToEbitda: 0.15
+# Banks, NBFCs and insurers (spec §4.2) are scored on the financial-sector set instead.
+financial_fundamental:
+  roe: 0.30
+  roa: 0.30
+  netInterestMargin: 0.25
+  costToIncome: 0.15
+financial_health:
+  creditToDeposit: 0.50
+  payoutRatio: 0.50
+# Ratios where a lower value scores higher.
+lower_is_better:
+  - pe
+  - pb
+  - debtToEquity
+  - netDebtToEbitda
+  - costToIncome
+  - creditToDeposit
+  - payoutRatio

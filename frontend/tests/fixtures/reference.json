@@ -1,0 +1,22 @@
+{
+  "_note": "Spec §10.2 reference set: 10 companies, at least 4 per market, covering the edge cases. `expect` pins the behaviour each company exists to test. `hand` holds ratios calculated by hand from the figures in the company's annual filing, checked by scripts/check-reference.ts within 1% (§10.3). Companies whose hand values are still empty are exported to tests/fixtures/reference-ratios.csv for checking against their annual reports.",
+  "companies": [
+    { "symbol": "RELIANCE", "market": "IN", "case": "stable large-cap with a long history", "expect": { "sectorSet": "standard", "minYears": 7, "minRatios": 40 }, "hand": {} },
+    { "symbol": "TCS", "market": "IN", "case": "stable large-cap; a fiscal year with missing quarters", "expect": { "sectorSet": "standard", "unavailable": "incomplete_years" }, "hand": {} },
+    { "symbol": "AAPL", "market": "US", "case": "stable large-cap with a long history", "expect": { "sectorSet": "standard", "minYears": 10, "minRatios": 40 },
+      "hand": {
+        "_source": "Apple Inc. Form 10-K for fiscal 2025 (period ended 2025-09-27), consolidated statements: net sales 416,161; net income 112,010; total current assets 147,957; total current liabilities 165,631; shareholders' equity 73,733 (2024: 56,950); term debt non-current 78,328, current 12,350, commercial paper 7,979 (USD millions)",
+        "netMargin": 0.26915,
+        "currentRatio": 0.89330,
+        "roe": 1.71422,
+        "debtToEquity": 1.33803
+      } },
+    { "symbol": "HDFCBANK", "market": "IN", "case": "bank - financial-sector ratio set", "expect": { "sectorSet": "financial", "hasRatio": "netInterestMargin", "lacksRatio": "currentRatio" }, "hand": {} },
+    { "symbol": "BRK-B", "market": "US", "case": "insurer - financial-sector ratio set", "expect": { "sectorSet": "financial", "lacksRatio": "currentRatio", "noAltman": true }, "hand": {} },
+    { "symbol": "MCD", "market": "US", "case": "negative equity from heavy buybacks", "expect": { "nullReason": ["roe", "negative_equity"] }, "hand": {} },
+    { "symbol": "RIVN", "market": "US", "case": "loss-making growth company", "expect": { "nullReason": ["pe", "negative_earnings"] }, "hand": {} },
+    { "symbol": "NVDA", "market": "US", "case": "restated history (10-for-1 split in 2024)", "expect": { "restated": true }, "hand": {} },
+    { "symbol": "NTPC", "market": "IN", "case": "high-debt utility", "expect": { "minDebtToEquity": 1.0 }, "hand": {} },
+    { "symbol": "SWIGGY", "market": "IN", "case": "recent IPO with under 5 years of data (and loss-making)", "expect": { "maxYears": 4, "unavailable": "history_depth", "nullReason": ["pe", "negative_earnings"] }, "hand": {} }
+  ]
+}
