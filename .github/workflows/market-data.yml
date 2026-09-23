@@ -64,7 +64,7 @@ jobs:
 
       # Every new "Award of Order / Receipt of Order" filing, read out of its PDF into customer, value and period.
       - name: Read new order filings
-        run: npx tsx scripts/orders-backfill.ts 3 40
+        run: npx tsx scripts/orders-backfill.ts 7 60
 
       - name: What the run found
         if: always()

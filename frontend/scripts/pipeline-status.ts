@@ -3,9 +3,14 @@
 //   npx tsx scripts/pipeline-status.ts
 import { Db } from "../src/server/db";
 
+// The exchanges write their timestamps in Indian time with no zone on them, so a run on a UTC machine has to
+// add the offset back or every filing looks like it is from the future.
+const IST_OFFSET = "+05:30";
+
 const ago = (iso: string | null) => {
   if (!iso) return "never";
-  const mins = Math.round((Date.now() - new Date(iso.replace(" ", "T")).getTime()) / 60_000);
+  const stamped = /[zZ]|[+-]\d\d:\d\d$/.test(iso) ? iso : `${iso.replace(" ", "T")}${IST_OFFSET}`;
+  const mins = Math.round((Date.now() - new Date(stamped).getTime()) / 60_000);
   if (mins < 60) return `${mins} min ago`;
   if (mins < 1440) return `${Math.round(mins / 60)} h ago`;
   return `${Math.round(mins / 1440)} days ago`;
