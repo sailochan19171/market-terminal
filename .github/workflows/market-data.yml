@@ -47,7 +47,9 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - run: npm ci
+      # `npm install` rather than `npm ci`: the runner's npm resolves a slightly different tree from the one
+      # this lock file was written with, and a dependency mismatch should not stop the day's data.
+      - run: npm install --no-audit --no-fund
 
       # BSE announcements for the last few days. A day the exchange answers with nothing stays open and is
       # tried again on the next run, so a blocked request never loses a day's filings.
