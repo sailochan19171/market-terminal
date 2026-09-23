@@ -291,8 +291,16 @@ function factSheet(c: CompanyReports, persona: Persona): string {
   if (r) {
     lines.push(`FISCAL YEARS ON RECORD: FY${r.years[0]}-FY${r.years.at(-1)} (${r.years.length})`);
     for (const [category, ratios] of Object.entries(r.categories)) {
-      const parts = Object.entries(ratios).filter(([, s]) => s.latest !== null).map(([key, s]) =>
-        `${s.label}${EASY_TO_MISREAD[key] ? ` (${EASY_TO_MISREAD[key]})` : ""} ${formatRatio(s, s.latest, cur)}${s.median10y !== null && s.series.length > 1 ? ` (${relation(s.latest, s.median10y)} the company's own ${s.series.length}-year median ${formatRatio(s, s.median10y, cur)}` + `${s.trend ? `; trend ${s.trend}` : ""})` : ""}${s.sectorMedian !== null ? ` [${relation(s.latest, s.sectorMedian)} the median of sector peers ${formatRatio(s, s.sectorMedian, cur)}]` : " [no sector comparison]"}`);
+      const parts = Object.entries(ratios).filter(([, s]) => s.latest !== null).map(([key, s]) => {
+        // Every fact the writer needs, and nothing it does not: the figure, how it sits against the company's
+        // own median and its sector, and the trend. Saying "no sector comparison" on every ratio that lacks one
+        // cost a third of the prompt and told the writer nothing it could use.
+        const own = s.median10y !== null && s.series.length > 1
+          ? ` (${relation(s.latest, s.median10y)} own ${s.series.length}y median ${formatRatio(s, s.median10y, cur)}${s.trend ? `, ${s.trend}` : ""})`
+          : "";
+        const peers = s.sectorMedian !== null ? ` [${relation(s.latest, s.sectorMedian)} sector ${formatRatio(s, s.sectorMedian, cur)}]` : "";
+        return `${s.label}${EASY_TO_MISREAD[key] ? ` (${EASY_TO_MISREAD[key]})` : ""} ${formatRatio(s, s.latest, cur)}${own}${peers}`;
+      });
       if (parts.length) lines.push(`${category.toUpperCase()}: ${parts.join("; ")}`);
     }
     const q = r.qualityScores;
@@ -307,7 +315,9 @@ function factSheet(c: CompanyReports, persona: Persona): string {
   const q = c.qualitative;
   if (q) {
     const items = [...q.moatSignals.map((i) => ["MOAT", i] as const), ...q.managementSignals.map((i) => ["MANAGEMENT", i] as const), ...q.risks.map((i) => ["RISK", i] as const)];
-    for (const [kind, i] of items.slice(0, 15)) lines.push(`${kind} (${i.sentiment}, ${i.date ?? "undated"}): ${i.summary}`);
+    // The signals that say something either way come first; a long tail of neutral notices only costs tokens.
+    const ordered = [...items].sort((a, b) => Number(b[1].sentiment !== "neutral") - Number(a[1].sentiment !== "neutral"));
+    for (const [kind, i] of ordered.slice(0, 10)) lines.push(`${kind} (${i.sentiment}, ${i.date ?? "undated"}): ${i.summary.slice(0, 220)}`);
   }
   const obs = observations(c, persona);
   if (obs.strengths.length) lines.push(`RULE-BASED STRENGTHS: ${obs.strengths.join(" ")}`);
@@ -513,7 +523,14 @@ export async function synthesise(trace: Trace, input: SynthesisInput): Promise<{
     return { final: { ...base, ...f, writtenBy: "data", note: reply.error && reply.error !== "no key configured" ? `The model was unavailable (${reply.error}); written from the data.` : undefined }, followUp: null };
   }
 
-  const textOf = (d: Draft) => [String(d.summary ?? ""), ...asList(d.strengths), ...asList(d.concerns), ...asSections(d.sections).map((x) => x.body)].join(" ");
+  // Each point is checked as its own sentence. Run together, a list of separate facts - "margin 23.3% higher
+  // than the peer", "net margin 18.4% higher" - reads to the direction check as one sentence full of numbers,
+  // and it flags a contradiction that is not there. Every wrongly flagged draft used to cost a second writing.
+  const textOf = (d: Draft) => [String(d.summary ?? ""), ...asList(d.strengths), ...asList(d.concerns), ...asSections(d.sections).map((x) => x.body)]
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .map((t) => (/[.!?;]$/.test(t) ? t : `${t}.`))
+    .join("\n");
   const problemsIn = (d: Draft) => [
     ...ungroundedNumbers(textOf(d), pool),
     ...contradictions(textOf(d)).map((c) => `wrong direction in "${c}"`),
@@ -521,7 +538,9 @@ export async function synthesise(trace: Trace, input: SynthesisInput): Promise<{
   ];
   let bad = problemsIn(draft);
   if (bad.length) {
-    // Regenerate once, naming the numbers that were not in the facts (spec §8.1).
+    // Regenerate once, naming the numbers that were not in the facts (spec §8.1). What tripped it is recorded:
+    // a second writing costs as much as the first, so it is worth seeing which check keeps asking for one.
+    trace.note("synthesis", "regenerating", { problems: bad.slice(0, 6) });
     const again = await trace.llm("synthesis", {
       system, json: true, temperature: 0.1, maxTokens: 3200,
       user: `${user}\n\nYour previous draft had problems: ${bad.join("; ")}. Rewrite it using only numbers that appear in the FACTS, and use the comparison words the FACTS give.`,

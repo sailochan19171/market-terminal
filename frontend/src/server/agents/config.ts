@@ -186,7 +186,7 @@ export function scoring(): Scoring {
 
 // --- per-agent settings (spec §7.3) ---------------------------------------------------------
 
-export interface AgentSetting { model: string | null; temperature: number | null; timeoutMs: number | null; maxRetries: number | null }
+export interface AgentSetting { model: string | null; temperature: number | null; timeoutMs: number | null; maxRetries: number | null; maxWaitMs: number | null }
 export interface Settings {
   agents: Record<string, AgentSetting>;
   request: { targetSeconds: number; maxLlmCalls: number; maxLoops: number };
@@ -210,6 +210,7 @@ export function settings(): Settings {
       temperature: typeof m.temperature === "number" ? m.temperature : null,
       timeoutMs: typeof m.timeout_ms === "number" ? m.timeout_ms : null,
       maxRetries: typeof m.max_retries === "number" ? m.max_retries : null,
+      maxWaitMs: typeof m.max_wait_ms === "number" ? m.max_wait_ms : null,
     };
   }
   const r = map(y.request);
@@ -224,7 +225,7 @@ export function settings(): Settings {
 }
 
 export const agentSetting = (agent: string): AgentSetting =>
-  settings().agents[agent] ?? { model: null, temperature: null, timeoutMs: null, maxRetries: null };
+  settings().agents[agent] ?? { model: null, temperature: null, timeoutMs: null, maxRetries: null, maxWaitMs: null };
 
 // --- field mapping (spec §5.0: config/field_mapping/) ---------------------------------------
 

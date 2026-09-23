@@ -27,6 +27,7 @@ function tuned(agent: string, opts: ChatOptions): ChatOptions {
     temperature: s.temperature ?? opts.temperature,
     timeoutMs: s.timeoutMs ?? opts.timeoutMs,
     maxRetries: s.maxRetries ?? opts.maxRetries,
+    maxWaitMs: s.maxWaitMs ?? opts.maxWaitMs,
   };
 }
 
@@ -135,7 +136,9 @@ export class Trace {
       ...tunedOpts,
       timeoutMs: Math.min(tunedOpts.timeoutMs ?? 45_000, remaining - 3_000),
       maxRetries: remaining < 20_000 ? 0 : tunedOpts.maxRetries,
-      maxWaitMs: Math.min(4_000, Math.max(0, remaining - 15_000)),
+      // A free tier meters tokens by the minute, and the agent that writes the answer is worth waiting for:
+      // a ten-second pause turns a rule-written answer into a written one. Never wait past the request's budget.
+      maxWaitMs: Math.min(tunedOpts.maxWaitMs ?? 4_000, Math.max(0, remaining - 15_000)),
     };
     if (this.llmCalls >= Math.min(MAX_LLM_CALLS, settings().request.maxLlmCalls)) {
       const skipped: Completion = { text: null, model: "", promptTokens: null, completionTokens: null, latencyMs: 0, error: `budget of ${MAX_LLM_CALLS} model calls used` };

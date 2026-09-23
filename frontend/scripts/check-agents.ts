@@ -78,6 +78,10 @@ async function main() {
   eq("a correct 'above' passes", contradictions("Return on equity 35.0% is well above sector peers 15.8% and close to the 7-year median 35.2%.").length, 0);
   eq("mixed but correct directions pass", contradictions("Operating margin of 20.2% is below its own median 23.7% but above the sector median 18.6%.").length, 0);
   eq("a two-company sentence is read correctly", contradictions("Infosys has an ROE of 35.0% against Wipro's 15.2%, and a net margin of 16.5% above Wipro's 12.1%.").length, 0);
+  // A list of separate points, and a sentence that moves on to another measure, are not contradictions. Each
+  // wrongly flagged draft used to cost a second writing by the model, which is what ran the free tier dry.
+  eq("a clause about another measure is judged on its own", contradictions("Accenture's price to earnings is 14.67x, lower than TCS 15.90x, and price to book is 3.75x, lower than TCS 7.38x.").length, 0);
+  eq("two separate points on their own lines pass", contradictions("Operating margin 23.3% higher than the peer 14.7%.\nNet profit margin 18.4% higher than the peer 11.0%.").length, 0);
 
   console.log("\nCompliance (spec §8.3)");
   eq("a buy instruction is caught", violations("You should buy this stock now.").length > 0, true);

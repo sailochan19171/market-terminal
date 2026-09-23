@@ -210,8 +210,9 @@ export function contradictions(text: string): string[] {
     const wrong = marks.some((mark, i) => {
       if (mark.at < subject.at) return false;
       // The comparison reaches the figures it governs: up to the next comparison word, or a phrase that starts a
-      // new one ("and close to the median", "while", "but").
-      const next = sentence.slice(mark.at + 1).search(/\b(close to|in line|near|similar|versus|vs\.?|compared|while|but|whereas|although|stable|flat|declin|improv|rising|falling|slightly)/i);
+      // new one ("and close to the median", "while", "but"). ", and ..." starts a clause about another measure,
+      // so a price-to-earnings is never read against the price-to-book that follows it.
+      const next = sentence.slice(mark.at + 1).search(/,\s*and\b|\b(close to|in line|near|similar|versus|vs\.?|compared|while|but|whereas|although|stable|flat|declin|improv|rising|falling|slightly)/i);
       const end = Math.min(marks[i + 1]?.at ?? sentence.length, next >= 0 ? mark.at + 1 + next : sentence.length);
       // The subject is the sentence's first figure or the one just before the comparison word; a claim is wrong only
       // if it is wrong for both, so "A's 35% against B's 15%, and 16% above B's 12%" is read correctly.

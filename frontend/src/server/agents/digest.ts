@@ -209,6 +209,9 @@ export function digest(agent: string, stage: string, input: unknown, output: unk
   try {
     const cur: Cur = is<{ currency: Cur }>(input, "currency") && input.currency === "USD" ? "USD" : "INR";
     if (stage === "error") return { headline: `Failed: ${is<{ message: string }>(output, "message") ? output.message : "unknown error"}` };
+    if (stage === "regenerating" && is<{ problems: string[] }>(output, "problems")) {
+      return { headline: `Written again: ${output.problems.length} problem${output.problems.length === 1 ? "" : "s"} in the first draft`, lists: [{ title: "What the checks found", rows: output.problems }] };
+    }
     if (stage === "contract_failed") return { headline: "Output failed its contract and was left out", lists: [{ title: "Problems", rows: (output as string[]).slice(0, 10) }] };
     if (stage === "llm") {
       const o = output as { model?: string; error?: string; promptTokens?: number | null; completionTokens?: number | null; fellBackTo?: string };

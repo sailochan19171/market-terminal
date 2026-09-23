@@ -20,6 +20,7 @@ orchestrator:
   temperature: 0
   timeout_ms: 20000
   max_retries: 1
+  max_wait_ms: 8000
 valuation_agent:
   model: small
   temperature: 0
@@ -37,6 +38,9 @@ synthesis:
   temperature: 0.3
   timeout_ms: 40000
   max_retries: 2
+  # Worth sitting out a per-minute rate limit for: this is the agent that writes the analysis, and a short wait
+  # here is the difference between a written answer and a rule-based one.
+  max_wait_ms: 14000
 ratio_engine:
   timeout_ms: 30000
 technical_agent:
