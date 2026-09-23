@@ -13,9 +13,15 @@
 #                                          pattern reader still fills in values and customers)
 name: Market data
 
+# The cadence is set by what a private repository gets free: 2,000 Actions minutes a month, and a run takes
+# about three. Hourly through the Indian filing day, plus a late sweep and one on Saturday, comes to roughly
+# 900 minutes a month - inside the free allowance, and never more than an hour behind a filing. (A public
+# repository has no such limit; there the schedule could go back to every fifteen minutes.)
 on:
   schedule:
-    - cron: "*/15 * * * *"     # every 15 minutes, around the clock
+    - cron: "0 3-15 * * 1-5"   # hourly, 08:30-20:30 India time, Monday to Friday
+    - cron: "30 17 * * 1-5"    # a late sweep at 23:00 India time
+    - cron: "0 6 * * 6"        # Saturday midday, for the filings that land at the weekend
   workflow_dispatch: {}        # and on demand, from the Actions tab
 
 concurrency:
