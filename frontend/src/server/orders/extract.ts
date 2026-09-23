@@ -62,15 +62,22 @@ export function candidates(db: Db, opts: { days?: number; limit?: number; symbol
     })),
   ].sort((a, b) => b.announcedAt.localeCompare(a.announcedAt));
 
-  // The same order is filed with both exchanges. Where a company has NSE filings on a day, its BSE filings for
-  // that day are the same announcements again, so they are left out - and every NSE filing of that day is kept,
-  // because a company can win more than one order in a day.
-  const nseDays = new Set(all.filter((c) => c.exchange === "NSE").map((c) => `${c.symbol ?? c.company}|${c.announcedAt.slice(0, 10)}`));
+  // The same order is filed with both exchanges, so a BSE filing is left out only once the company's order for
+  // that day has actually been read - otherwise a day whose NSE filing was never read (it arrived late, or its
+  // PDF was a scan) would lose the order from both sides. Two copies that do get read are collapsed when the
+  // dashboard asks for them, by company, day and value.
+  const read = new Set<string>();
+  const since10 = all.map((c) => c.announcedAt.slice(0, 10)).sort()[0] ?? "0000";
+  for (const r of db.all<Row>("SELECT symbol, company, substr(announced_at,1,10) d FROM company_order WHERE announced_at >= ?", [since10])) {
+    if (r.symbol) read.add(`${String(r.symbol)}|${String(r.d)}`);
+    if (r.company) read.add(`${String(r.company)}|${String(r.d)}`);
+  }
   const fresh = opts.redo ? new Set<string>() : seenIds(db, all.map((c) => c.id));
   const out: Candidate[] = [];
   for (const c of all) {
     if (fresh.has(c.id)) continue;
-    if (c.exchange === "BSE" && nseDays.has(`${c.symbol ?? c.company}|${c.announcedAt.slice(0, 10)}`)) continue;
+    const day = c.announcedAt.slice(0, 10);
+    if (c.exchange === "BSE" && (read.has(`${c.symbol}|${day}`) || read.has(`${c.company}|${day}`))) continue;
     out.push(c);
     if (out.length >= limit) break;
   }
