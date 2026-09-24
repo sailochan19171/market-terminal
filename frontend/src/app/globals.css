@@ -192,4 +192,8 @@ body {
   body { overflow-wrap: anywhere; }
   /* A figure and its label stay together, but the pair may wrap. */
   .tabular { font-variant-numeric: tabular-nums; }
+  /* A grid or flex child is, by default, never narrower than its widest line - which is how one long heading
+     or one unbroken figure drags a whole column, and with it the page, wider than the screen. On a phone it
+     may shrink instead, so the content wraps inside its column. Laptops keep the default. */
+  [class*="grid"] > *, [class*="flex"] > * { min-width: 0; }
 }
