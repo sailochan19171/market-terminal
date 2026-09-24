@@ -83,7 +83,7 @@ export function SignIn() {
 
       {open && (
         <div role="dialog" aria-label="Account"
-          className="absolute right-0 z-50 mt-2 w-80 rounded-2xl border border-slate-200 bg-white p-4 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+          className="absolute right-0 z-50 mt-2 w-[min(20rem,calc(100vw-1.5rem))] rounded-2xl border border-slate-200 bg-white p-4 shadow-xl dark:border-slate-700 dark:bg-slate-900">
           <div className="flex items-start justify-between">
             <p className="text-sm font-semibold">{user ? "Signed in" : mode === "in" ? "Sign in" : "Create an account"}</p>
             <button type="button" onClick={() => setOpen(false)} aria-label="Close" className="text-slate-400 hover:text-slate-600"><X size={15} /></button>

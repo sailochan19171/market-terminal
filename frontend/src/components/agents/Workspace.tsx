@@ -50,6 +50,7 @@ export function Workspace({ initialQuestion, initialSymbol }: { initialQuestion?
   const [panelMax, setPanelMax] = useState(false);
   const [minimized, setMinimized] = useState<Record<string, boolean>>({});
   const [maxTurn, setMaxTurn] = useState<string | null>(null);
+  const [mobileSidebar, setMobileSidebar] = useState(false);
   const [context, setContext] = useState<{ symbol: string; market: Market; company: string; exchange: string } | null>(null);
   const thread = useRef<HTMLDivElement>(null);
   const aborts = useRef(new Map<string, AbortController>());
@@ -179,55 +180,96 @@ export function Workspace({ initialQuestion, initialSymbol }: { initialQuestion?
     return last ? followUps(last) : [];
   }, [turns]);
 
+  const sidebarContent = (
+    <>
+      <div className="p-3">
+        <button type="button" onClick={() => { newConversation(); setMobileSidebar(false); }}
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700">
+          <MessageSquarePlus size={16} /> New analysis
+        </button>
+      </div>
+      <div className="px-3 pb-2">
+        <p className="px-1 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Persona</p>
+        <div className="space-y-1.5">
+          {(personas.length ? personas : [{ id: "buffett", name: "Buffett-style value", inspiredBy: "Warren Buffett", tagline: "", keyMetrics: [], weights: {}, dcfGrowthCap: 0.08, requiredMarginOfSafety: 0.25 }]).map((p) => (
+            <button key={p.id} type="button" onClick={() => { setPersonaId(p.id); setMobileSidebar(false); }}
+              className={clsx("w-full rounded-xl border px-3 py-2 text-left transition disabled:opacity-60",
+                personaId === p.id ? "border-indigo-400 bg-indigo-50 dark:border-indigo-400/50 dark:bg-indigo-500/15" : "border-slate-200 hover:border-indigo-200 dark:border-slate-700 dark:hover:border-indigo-500/40")}>
+              <span className="block text-sm font-semibold">{p.name}</span>
+              <span className="block text-[11px] text-slate-500">inspired by the principles of {p.inspiredBy}</span>
+              {p.weights.fundamental !== undefined && personaId === p.id && (
+                <span className="mt-1 block text-[10.5px] leading-snug text-slate-500">
+                  F {Math.round(p.weights.fundamental * 100)} · V {Math.round(p.weights.valuation * 100)} · T {Math.round(p.weights.technical * 100)} · Q {Math.round(p.weights.qualitative * 100)} · MoS {Math.round(p.requiredMarginOfSafety * 100)}% · growth cap {Math.round(p.dcfGrowthCap * 100)}%
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
+        <p className="px-1 pb-1.5 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Recent analyses</p>
+        {!conversations.length && <p className="px-1 text-xs text-slate-500">Your analyses appear here. They are kept in this browser.</p>}
+        <ul className="space-y-0.5">
+          {conversations.map((c) => (
+            <li key={c.id} className="group flex items-center">
+              <button type="button" onClick={() => { open(c); setMobileSidebar(false); }} disabled={busy}
+                className={clsx("min-w-0 flex-1 rounded-lg px-2 py-1.5 text-left text-sm transition", c.id === conversationId ? "bg-slate-100 dark:bg-slate-800" : "hover:bg-slate-50 dark:hover:bg-slate-800/60")}>
+                <span className="block truncate">{c.title}</span>
+                <span className="block text-[10.5px] text-slate-400">{c.requests.length} question{c.requests.length === 1 ? "" : "s"} · {c.personaId} · {c.updatedAt.slice(0, 10)}</span>
+              </button>
+              <button type="button" onClick={() => forget(c.id)} aria-label={`Remove ${c.title}`} className="rounded p-1 text-slate-400 opacity-0 transition hover:text-rose-600 group-hover:opacity-100"><Trash2 size={13} /></button>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <p className="border-t border-slate-200 px-4 py-3 text-[10.5px] leading-snug text-slate-500 dark:border-slate-800">Educational research, not investment advice. Personas are inspired by the investing principles of the investors named; they are not those people.</p>
+    </>
+  );
+
   return (
     <div className="flex h-full">
       {/* ---- sidebar ---- */}
       <aside className="hidden w-72 shrink-0 flex-col border-r border-slate-200 bg-white lg:flex dark:border-slate-800 dark:bg-[#0e1428]">
-        <div className="p-3">
-          <button type="button" onClick={newConversation}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700">
-            <MessageSquarePlus size={16} /> New analysis
-          </button>
-        </div>
-        <div className="px-3 pb-2">
-          <p className="px-1 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Persona</p>
-          <div className="space-y-1.5">
-            {(personas.length ? personas : [{ id: "buffett", name: "Buffett-style value", inspiredBy: "Warren Buffett", tagline: "", keyMetrics: [], weights: {}, dcfGrowthCap: 0.08, requiredMarginOfSafety: 0.25 }]).map((p) => (
-              <button key={p.id} type="button" onClick={() => setPersonaId(p.id)}
-                className={clsx("w-full rounded-xl border px-3 py-2 text-left transition disabled:opacity-60",
-                  personaId === p.id ? "border-indigo-400 bg-indigo-50 dark:border-indigo-400/50 dark:bg-indigo-500/15" : "border-slate-200 hover:border-indigo-200 dark:border-slate-700 dark:hover:border-indigo-500/40")}>
-                <span className="block text-sm font-semibold">{p.name}</span>
-                <span className="block text-[11px] text-slate-500">inspired by the principles of {p.inspiredBy}</span>
-                {p.weights.fundamental !== undefined && personaId === p.id && (
-                  <span className="mt-1 block text-[10.5px] leading-snug text-slate-500">
-                    F {Math.round(p.weights.fundamental * 100)} · V {Math.round(p.weights.valuation * 100)} · T {Math.round(p.weights.technical * 100)} · Q {Math.round(p.weights.qualitative * 100)} · MoS {Math.round(p.requiredMarginOfSafety * 100)}% · growth cap {Math.round(p.dcfGrowthCap * 100)}%
-                  </span>
-                )}
+        {sidebarContent}
+      </aside>
+
+      {/* ---- mobile personas & history drawer ---- */}
+      {mobileSidebar && (
+        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Personas and history">
+          <button className="motion-fade fixed inset-0 bg-slate-900/60 backdrop-blur-xs" aria-label="Close" onClick={() => setMobileSidebar(false)} />
+          <div className="motion-rise relative z-10 flex h-full w-[min(22rem,85vw)] flex-col bg-white shadow-2xl dark:bg-[#0e1428]">
+            <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-100 px-4 dark:border-slate-800">
+              <span className="font-semibold text-sm">Personas &amp; History</span>
+              <button onClick={() => setMobileSidebar(false)} aria-label="Close" className="rounded-xl p-1.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
+                <X size={18} />
               </button>
-            ))}
+            </div>
+            {sidebarContent}
           </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
-          <p className="px-1 pb-1.5 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Recent analyses</p>
-          {!conversations.length && <p className="px-1 text-xs text-slate-500">Your analyses appear here. They are kept in this browser.</p>}
-          <ul className="space-y-0.5">
-            {conversations.map((c) => (
-              <li key={c.id} className="group flex items-center">
-                <button type="button" onClick={() => open(c)} disabled={busy}
-                  className={clsx("min-w-0 flex-1 rounded-lg px-2 py-1.5 text-left text-sm transition", c.id === conversationId ? "bg-slate-100 dark:bg-slate-800" : "hover:bg-slate-50 dark:hover:bg-slate-800/60")}>
-                  <span className="block truncate">{c.title}</span>
-                  <span className="block text-[10.5px] text-slate-400">{c.requests.length} question{c.requests.length === 1 ? "" : "s"} · {c.personaId} · {c.updatedAt.slice(0, 10)}</span>
-                </button>
-                <button type="button" onClick={() => forget(c.id)} aria-label={`Remove ${c.title}`} className="rounded p-1 text-slate-400 opacity-0 transition hover:text-rose-600 group-hover:opacity-100"><Trash2 size={13} /></button>
-              </li>
-            ))}
-          </ul>
-        </div>
-        <p className="border-t border-slate-200 px-4 py-3 text-[10.5px] leading-snug text-slate-500 dark:border-slate-800">Educational research, not investment advice. Personas are inspired by the investing principles of the investors named; they are not those people.</p>
-      </aside>
+      )}
 
       {/* ---- thread ---- */}
       <section className="flex min-w-0 flex-1 flex-col">
+        {/* Mobile top bar for persona and history */}
+        <div className="flex items-center justify-between border-b border-slate-200 bg-white px-3 py-2 lg:hidden dark:border-slate-800 dark:bg-[#0e1428]">
+          <button
+            type="button"
+            onClick={() => setMobileSidebar(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+          >
+            <span>Persona: <strong>{persona?.name ?? "Buffett-style value"}</strong></span>
+            <ChevronDown size={14} />
+          </button>
+          <button
+            type="button"
+            onClick={newConversation}
+            className="flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm"
+          >
+            <MessageSquarePlus size={13} /> New
+          </button>
+        </div>
+
         <div ref={thread} className="min-h-0 flex-1 overflow-y-auto">
           <div className="mx-auto max-w-4xl space-y-6 px-4 py-6 sm:px-6">
             {!turns.length && (

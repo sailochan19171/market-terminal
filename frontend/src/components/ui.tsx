@@ -24,12 +24,12 @@ export function CardHeader({
   title, subtitle, actions, className,
 }: { title: ReactNode; subtitle?: ReactNode; actions?: ReactNode; className?: string }) {
   return (
-    <div className={clsx("flex flex-wrap items-start justify-between gap-3 px-5 pt-5 sm:px-6", className)}>
-      <div className="min-w-0">
+    <div className={clsx("flex w-full flex-wrap items-start justify-between gap-3 px-5 pt-5 sm:px-6", className)}>
+      <div className="min-w-0 flex-1">
         <h2 className="text-lg font-semibold tracking-tight text-slate-900 dark:text-white">{title}</h2>
         {subtitle && <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">{subtitle}</p>}
       </div>
-      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+      {actions && <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">{actions}</div>}
     </div>
   );
 }
@@ -40,12 +40,12 @@ export function CardBody({ className, children }: { className?: string; children
 
 export function PageTitle({ title, subtitle, actions }: { title: string; subtitle?: ReactNode; actions?: ReactNode }) {
   return (
-    <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-      <div>
+    <div className="mb-6 flex w-full flex-wrap items-end justify-between gap-4">
+      <div className="min-w-0 flex-1">
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl dark:text-white">{title}</h1>
         {subtitle && <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{subtitle}</p>}
       </div>
-      {actions}
+      {actions && <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">{actions}</div>}
     </div>
   );
 }
@@ -62,14 +62,15 @@ export function Badge({ children, tone: t = "slate" }: { children: ReactNode; to
     down: "bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300",
     amber: "bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
   } as const;
-  return <span className={clsx("inline-flex items-center rounded-md px-1.5 py-0.5 text-[11px] font-semibold", map[t])}>{children}</span>;
+  // A badge never makes its row wider than the phone: it shrinks and its text wraps rather than pushing out.
+  return <span className={clsx("inline-flex max-w-full shrink items-center rounded-md px-1.5 py-0.5 text-[11px] font-semibold", map[t])}>{children}</span>;
 }
 
 export function Segmented<T extends string>({
-  options, value, onChange, size = "md",
-}: { options: { value: T; label: string; disabled?: boolean; title?: string }[]; value: T; onChange: (v: T) => void; size?: "sm" | "md" }) {
+  options, value, onChange, size = "md", className,
+}: { options: { value: T; label: string; disabled?: boolean; title?: string }[]; value: T; onChange: (v: T) => void; size?: "sm" | "md"; className?: string }) {
   return (
-    <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-0.5 dark:border-slate-700 dark:bg-slate-800/60">
+    <div className={clsx("no-scrollbar inline-flex max-w-full overflow-x-auto rounded-xl border border-slate-200 bg-slate-50 p-0.5 dark:border-slate-700 dark:bg-slate-800/60", className)}>
       {options.map((o) => (
         <button
           key={o.value}
@@ -78,7 +79,7 @@ export function Segmented<T extends string>({
           disabled={o.disabled}
           onClick={() => onChange(o.value)}
           className={clsx(
-            "rounded-[10px] font-medium transition",
+            "shrink-0 whitespace-nowrap rounded-[10px] font-medium transition",
             size === "sm" ? "px-2.5 py-1 text-xs" : "px-3.5 py-1.5 text-sm",
             o.value === value
               ? "bg-white text-indigo-700 shadow-sm dark:bg-slate-900 dark:text-indigo-300"

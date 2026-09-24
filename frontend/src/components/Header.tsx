@@ -169,7 +169,7 @@ function SearchBox() {
         placeholder="Search company, NSE symbol, BSE code or index"
         className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm outline-none transition placeholder:text-slate-400 focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-100 dark:border-slate-700 dark:bg-slate-800/60 dark:focus:bg-slate-900 dark:focus:ring-indigo-500/20" />
       {open && q.trim() && (
-        <div className="menu-panel absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900">
+        <div className="menu-panel absolute left-1/2 -translate-x-1/2 top-full z-50 mt-2 w-[min(28rem,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl sm:left-0 sm:right-0 sm:w-auto sm:translate-x-0 dark:border-slate-700 dark:bg-slate-900">
           {items.length === 0 ? <p className="px-4 py-6 text-center text-sm text-slate-500">No matches for “{q}”.</p> : items.map((it, i) => (
             <button key={it.href} onMouseEnter={() => setCursor(i)} onClick={() => go(it.href)}
               className={clsx("flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left", i === cursor && "bg-slate-50 dark:bg-slate-800")}>
@@ -265,36 +265,133 @@ function MegaMenu({ group, active, open, onOpen, onClose }: { group: MenuGroup; 
   );
 }
 
-function MobileMenu({ onClose }: { onClose: () => void }) {
-  const [openGroup, setOpenGroup] = useState<string | null>("Markets");
+function MobileMenu({ onClose, pathname }: { onClose: () => void; pathname: string }) {
+  const [openGroup, setOpenGroup] = useState<string | null>(() => {
+    const active = MENU.find((g) => g.match.some((m) => pathname.startsWith(m)));
+    return active ? active.label : "Markets";
+  });
+
+  useEffect(() => {
+    const orig = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = orig;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Site menu">
-      <button className="motion-fade absolute inset-0 bg-slate-900/40" aria-label="Close menu" onClick={onClose} />
-      <nav className="motion-rise absolute inset-y-0 left-0 w-[min(22rem,90vw)] overflow-y-auto bg-white p-4 shadow-2xl dark:bg-slate-950">
-        <div className="mb-3 flex items-center justify-between">
-          <span className="font-semibold">Menu</span>
-          <button onClick={onClose} aria-label="Close menu" className="rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-slate-800"><X size={18} /></button>
+    <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Site navigation menu">
+      <button className="motion-fade fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity" aria-label="Close menu" onClick={onClose} />
+      <nav className="motion-rise relative z-10 flex h-full w-[min(22rem,88vw)] flex-col bg-white shadow-2xl dark:bg-slate-950">
+        <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-100 px-4 dark:border-slate-800">
+          <Link href="/" onClick={onClose} className="flex items-center gap-2">
+            <BrandMark size={32} />
+            <span className="leading-tight">
+              <span className="block text-sm font-semibold tracking-tight">Market Terminal</span>
+              <span className="block text-[9.5px] font-medium uppercase tracking-[0.14em] text-slate-400">NSE · BSE research</span>
+            </span>
+          </Link>
+          <button onClick={onClose} aria-label="Close menu" className="rounded-xl p-2 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800">
+            <X size={20} />
+          </button>
         </div>
-        <Link href="/" onClick={onClose} className="block rounded-xl px-3 py-2.5 font-semibold hover:bg-slate-50 dark:hover:bg-slate-900">Home</Link>
-        {MENU.map((g) => (
-          <div key={g.label} className="border-t border-slate-100 dark:border-slate-800">
-            <button className="flex w-full items-center justify-between px-3 py-3 font-semibold" aria-expanded={openGroup === g.label}
-              onClick={() => setOpenGroup(openGroup === g.label ? null : g.label)}>
-              {g.label}<ChevronDown size={16} className={clsx("transition-transform", openGroup === g.label && "rotate-180")} />
-            </button>
-            {openGroup === g.label && (
-              <ul className="motion-fade pb-2">
-                {g.sections.flatMap((s) => s.items).map((it) => (
-                  <li key={it.href}>
-                    <Link href={it.href} onClick={onClose} className="flex items-center gap-3 rounded-xl px-3 py-2 text-sm hover:bg-indigo-50 dark:hover:bg-indigo-500/10">
-                      <it.icon size={16} className="text-indigo-600 dark:text-indigo-300" /> {it.label}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {/* Quick shortcuts */}
+          <div>
+            <p className="px-1 pb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-slate-400">Quick access</p>
+            <div className="grid grid-cols-2 gap-2">
+              <Link href="/assistant" onClick={onClose}
+                className={clsx("flex items-center gap-2 rounded-xl border p-2.5 text-xs font-semibold transition",
+                  pathname.startsWith("/assistant") ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:border-indigo-500/40 dark:bg-indigo-500/15 dark:text-indigo-300" : "border-slate-200 bg-slate-50 text-slate-700 hover:border-indigo-300 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300")}>
+                <Sparkles size={15} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
+                <span className="truncate">Ask AI</span>
+              </Link>
+              <Link href="/agents" onClick={onClose}
+                className={clsx("flex items-center gap-2 rounded-xl border p-2.5 text-xs font-semibold transition",
+                  pathname.startsWith("/agents") ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:border-indigo-500/40 dark:bg-indigo-500/15 dark:text-indigo-300" : "border-slate-200 bg-slate-50 text-slate-700 hover:border-indigo-300 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300")}>
+                <Bot size={15} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
+                <span className="truncate">Agents</span>
+              </Link>
+              <Link href="/orders" onClick={onClose}
+                className={clsx("flex items-center gap-2 rounded-xl border p-2.5 text-xs font-semibold transition",
+                  pathname.startsWith("/orders") ? "border-emerald-400 bg-emerald-50 text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-300" : "border-slate-200 bg-slate-50 text-slate-700 hover:border-emerald-300 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300")}>
+                <PackageCheck size={15} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <span className="truncate">Orders</span>
+              </Link>
+              <Link href="/watchlist" onClick={onClose}
+                className={clsx("flex items-center gap-2 rounded-xl border p-2.5 text-xs font-semibold transition",
+                  pathname.startsWith("/watchlist") ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:border-indigo-500/40 dark:bg-indigo-500/15 dark:text-indigo-300" : "border-slate-200 bg-slate-50 text-slate-700 hover:border-indigo-300 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300")}>
+                <Star size={15} className="text-amber-500 shrink-0" />
+                <span className="truncate">Watchlist</span>
+              </Link>
+            </div>
           </div>
-        ))}
+
+          {/* Navigation links */}
+          <div>
+            <p className="px-1 pb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-slate-400">Navigation</p>
+            <div className="space-y-1">
+              <Link href="/" onClick={onClose}
+                className={clsx("flex items-center justify-between rounded-xl px-3 py-2.5 text-sm font-semibold transition",
+                  pathname === "/" ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300" : "text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900")}>
+                Home
+              </Link>
+              {MENU.map((g) => {
+                const isGroupActive = g.match.some((m) => pathname.startsWith(m));
+                const isOpen = openGroup === g.label;
+                return (
+                  <div key={g.label} className="rounded-xl border border-slate-100 dark:border-slate-800/80 overflow-hidden">
+                    <button type="button" className={clsx("flex w-full items-center justify-between px-3 py-2.5 text-sm font-semibold transition",
+                      isGroupActive ? "text-indigo-700 dark:text-indigo-300 bg-indigo-50/50 dark:bg-indigo-500/10" : "text-slate-800 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-900")}
+                      aria-expanded={isOpen}
+                      onClick={() => setOpenGroup(isOpen ? null : g.label)}>
+                      <span className="flex items-center gap-2">
+                        {g.label}
+                        {isGroupActive && <span className="h-1.5 w-1.5 rounded-full bg-indigo-600 dark:bg-indigo-400" />}
+                      </span>
+                      <ChevronDown size={15} className={clsx("transition-transform duration-200 text-slate-400", isOpen && "rotate-180")} />
+                    </button>
+                    {isOpen && (
+                      <ul className="motion-fade border-t border-slate-100 bg-slate-50/50 px-1 py-1.5 space-y-0.5 dark:border-slate-800 dark:bg-slate-900/40">
+                        {g.sections.flatMap((s) => s.items).map((it) => {
+                          const isItemActive = pathname === it.href;
+                          return (
+                            <li key={it.href}>
+                              <Link href={it.href} onClick={onClose}
+                                className={clsx("flex items-start gap-2.5 rounded-lg px-2.5 py-2 text-xs transition",
+                                  isItemActive ? "bg-indigo-100/70 font-semibold text-indigo-800 dark:bg-indigo-500/20 dark:text-indigo-200" : "text-slate-700 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white")}>
+                                <it.icon size={15} className={clsx("mt-0.5 shrink-0", isItemActive ? "text-indigo-700 dark:text-indigo-300" : "text-slate-400")} />
+                                <div className="min-w-0">
+                                  <span className="block font-medium">{it.label}</span>
+                                  <span className="block truncate text-[10.5px] text-slate-400">{it.description}</span>
+                                </div>
+                              </Link>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Footer info */}
+        <div className="shrink-0 border-t border-slate-100 p-4 space-y-3 dark:border-slate-800">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-slate-500">Theme mode</span>
+            <ThemeToggle />
+          </div>
+          <p className="text-[10px] text-slate-400 leading-relaxed">
+            Market Terminal · NSE & BSE data. Educational research tool.
+          </p>
+        </div>
       </nav>
     </div>
   );
@@ -319,18 +416,18 @@ export function Header() {
   return (
     <header className={clsx("sticky top-0 z-40 border-b bg-white/90 backdrop-blur transition-shadow supports-[backdrop-filter]:bg-white/80 dark:bg-slate-950/85",
       scrolled ? "border-slate-200 shadow-[0_6px_20px_-12px_rgba(15,23,42,0.25)] dark:border-slate-800" : "border-slate-200 dark:border-slate-800")}>
-      <div className="mx-auto flex h-16 max-w-[1400px] items-center gap-3 px-4 sm:px-6">
-        <button className="rounded-xl p-2 text-slate-600 hover:bg-slate-100 lg:hidden dark:text-slate-300 dark:hover:bg-slate-800" aria-label="Open menu" onClick={() => setMobile(true)}>
+      <div className="mx-auto flex h-16 max-w-[1400px] items-center gap-2 sm:gap-3 px-3 sm:px-6">
+        <button className="shrink-0 rounded-xl p-2 text-slate-600 hover:bg-slate-100 lg:hidden dark:text-slate-300 dark:hover:bg-slate-800" aria-label="Open menu" onClick={() => setMobile(true)}>
           <Menu size={20} />
         </button>
         <Link href="/" className="group flex shrink-0 items-center gap-2">
-          <BrandMark size={38} className="drop-shadow-md transition group-hover:-rotate-3 group-hover:scale-105" />
+          <BrandMark size={34} className="sm:size-[38px] drop-shadow-md transition group-hover:-rotate-3 group-hover:scale-105" />
           <span className="hidden leading-tight sm:block">
             <span className="block text-[15px] font-semibold tracking-tight">Market Terminal</span>
             <span className="block text-[10px] font-medium uppercase tracking-[0.16em] text-slate-400">NSE · BSE research</span>
           </span>
         </Link>
-        <div className="flex flex-1 justify-center"><SearchBox /></div>
+        <div className="flex flex-1 justify-center min-w-0"><SearchBox /></div>
         <Link href="/assistant" title="Ask the research assistant"
           className="hidden items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-sm font-semibold text-indigo-700 transition hover:border-indigo-400 sm:inline-flex dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300">
           <Sparkles size={15} aria-hidden /> Ask AI
@@ -343,8 +440,10 @@ export function Header() {
           className="hidden items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-emerald-400 hover:text-emerald-700 md:inline-flex dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
           <PackageCheck size={15} aria-hidden /> Orders
         </Link>
-        <ThemeToggle />
-        <SignIn />
+        <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
+          <ThemeToggle />
+          <SignIn />
+        </div>
       </div>
       <nav aria-label="Main" className="mx-auto hidden max-w-[1400px] items-center gap-1 px-4 sm:px-6 lg:flex">
         <Link href="/" className={clsx("relative px-3 py-3 text-sm font-semibold transition", pathname === "/" ? "text-indigo-700 dark:text-indigo-300" : "text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white")}>
@@ -356,7 +455,7 @@ export function Header() {
         ))}
       </nav>
       <TickerStrip />
-      {mobile && <MobileMenu onClose={() => setMobile(false)} />}
+      {mobile && <MobileMenu onClose={() => setMobile(false)} pathname={pathname} />}
     </header>
   );
 }

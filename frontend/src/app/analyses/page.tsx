@@ -104,15 +104,15 @@ function AnalysesList() {
               <li key={v.id}>
                 <Card className="hover-lift flex h-full flex-col">
                   <CardBody className="flex flex-1 flex-col gap-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
+                    <div className="flex w-full items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
                         <p className="truncate font-semibold">{v.company}</p>
                         <div className="mt-1 flex flex-wrap gap-1">
                           {v.symbol && <Badge tone="brand">NSE {v.symbol}</Badge>}
                           {v.bse_code && <Badge tone="up">BSE {v.bse_code}</Badge>}
                         </div>
                       </div>
-                      <Badge tone="up"><CheckCircle2 size={11} className="mr-1" /> Completed</Badge>
+                      <span className="shrink-0"><Badge tone="up"><CheckCircle2 size={11} className="mr-1" /> Completed</Badge></span>
                     </div>
                     <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
                       <dt className="text-slate-500">Analysis date</dt><dd className="font-semibold">{dateOnly(v.analysis_date)}</dd>

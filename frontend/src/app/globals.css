@@ -179,3 +179,17 @@ body {
 @keyframes brand-draw { 0% { stroke-dashoffset: 1; } 60%, 100% { stroke-dashoffset: 0; } }
 .brand-bob { transform-box: fill-box; transform-origin: bottom; animation: brand-bob 1.1s ease-in-out infinite; }
 .brand-draw { stroke-dasharray: 1; stroke-dashoffset: 1; animation: brand-draw 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
+
+/* --- phones ----------------------------------------------------------------
+   A page must never scroll sideways on a phone: a single figure that will not
+   wrap, or a row of chips a few pixels too wide, drags the whole page with it
+   and every heading below sits off-centre. The guard is on the page itself, so
+   a table or a chart that genuinely needs more width still scrolls inside its
+   own box, and nothing changes on a laptop. */
+@media (max-width: 767px) {
+  html, body { overflow-x: hidden; max-width: 100%; }
+  /* Long unbroken strings - an ISIN, a filing title, a URL - wrap instead of pushing the layout out. */
+  body { overflow-wrap: anywhere; }
+  /* A figure and its label stay together, but the pair may wrap. */
+  .tabular { font-variant-numeric: tabular-nums; }
+}
