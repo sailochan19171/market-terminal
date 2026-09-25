@@ -12,6 +12,7 @@ import type {
 import { parseJson, type Trace } from "./trace";
 import { contradictions, numberPool, ungroundedNumbers, wrongComparisons } from "./validator";
 import { debate as argueBothSides } from "./debate";
+import { ownershipFacts } from "./ownership";
 
 export interface CompanyReports {
   raw: RawData;
@@ -319,6 +320,12 @@ function factSheet(c: CompanyReports, persona: Persona): string {
     // The signals that say something either way come first; a long tail of neutral notices only costs tokens.
     const ordered = [...items].sort((a, b) => Number(b[1].sentiment !== "neutral") - Number(a[1].sentiment !== "neutral"));
     for (const [kind, i] of ordered.slice(0, 10)) lines.push(`${kind} (${i.sentiment}, ${i.date ?? "undated"}): ${i.summary.slice(0, 220)}`);
+  }
+  // Who owns the company, as filed. A separate line because it is the one part of the sheet that is not a ratio
+  // or a sentence from a filing: it is what the shareholding pattern says, quarter by quarter.
+  if (c.raw.ownership) {
+    const own = ownershipFacts(c.raw.ownership);
+    if (own.length) lines.push(`OWNERSHIP: ${own.join(" ")}`);
   }
   const obs = observations(c, persona);
   if (obs.strengths.length) lines.push(`RULE-BASED STRENGTHS: ${obs.strengths.join(" ")}`);

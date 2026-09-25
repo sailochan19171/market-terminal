@@ -19,6 +19,8 @@ export type Market = "IN" | "US";
 export type SectorSet = "standard" | "financial";
 export type Intent = "full_analysis" | "single_metric" | "comparison" | "explain_concept" | "out_of_scope";
 
+import type { OwnershipReport } from "./ownership";
+
 /** A figure that is missing, and why - never a zero standing in for one (spec §4.1). */
 export interface Unavailable { key: string; reason: string }
 
@@ -271,6 +273,8 @@ export interface RawData {
   /** Peer values for sector comparison when they come from the provider rather than the database (US, as decimals). */
   peerValues?: { basis: string; values: Record<string, number[]> };
   filings: { when: string; title: string; detail: string | null; url: string | null; source: string }[]; // last 90 days, newest first
+  /** Who owns the company, from the quarterly shareholding patterns and insider disclosures (India only). */
+  ownership?: OwnershipReport | null;
   peers: string[];
   fetchedAt: string;
   sources: { dataset: string; source: string; fetchedAt: string }[];

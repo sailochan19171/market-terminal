@@ -8,6 +8,7 @@
 import type { Db } from "../db";
 import { search as searchDocs } from "../docs/store";
 import { riskFlags } from "../research/flags";
+import { ownershipSignals } from "./ownership";
 import type { Persona } from "./config";
 import type { QualitativeItem, QualitativeReport, RawData, Unavailable } from "./state";
 import { parseJson, type Trace } from "./trace";
@@ -85,6 +86,14 @@ export async function qualitativeReport(db: Db, raw: RawData, persona: Persona, 
   for (const f of flags?.flags ?? []) {
     if (f.status !== "raised" || !f.source?.url) continue;
     rules.risks.unshift({ summary: `${f.label}: ${f.detail}`, sentiment: "negative", sourceUrl: f.source.url, sourceLabel: f.source.label, date: f.source.when?.slice(0, 10) ?? null });
+  }
+
+  // Who owns the company, from the shareholding patterns and insider disclosures the data agent read. These
+  // are filed figures, so they go in whether or not a model answers.
+  if (raw.ownership) {
+    const own = ownershipSignals(raw.ownership);
+    rules.managementSignals.push(...own.management);
+    rules.risks.push(...own.risks);
   }
 
   const sources: Source[] = raw.filings

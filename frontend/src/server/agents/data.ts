@@ -11,6 +11,7 @@ import { fiscalYear } from "../core/metrics";
 import { median, toNum } from "../util";
 import { fieldMapping } from "./config";
 import type { AnnualFigures, RawData, SectorSet, Unavailable } from "./state";
+import { ownershipReport, type OwnershipReport } from "./ownership";
 
 const FINANCIAL = /bank|financial|finance|nbfc|insur|lending|housing finance/i;
 
@@ -251,6 +252,16 @@ export function loadRawData(db: Db, symbol: string, years = 10): RawData {
   }
   if (!filings.length) unavailable.push({ key: "news", reason: "no exchange filings in the last 90 days" });
 
+  // Who owns the company: the quarterly shareholding patterns and insider dealings already on record. A US
+  // ticker could collide with an NSE symbol, so this is read for Indian listings only.
+  let ownership: OwnershipReport | null = null;
+  try {
+    ownership = ownershipReport(db, sym);
+    unavailable.push(...ownership.unavailable);
+  } catch (e) {
+    unavailable.push({ key: "shareholding", reason: `the shareholding pattern could not be read: ${(e as Error).message}` });
+  }
+
   // The close on the last session of each fiscal year, as traded - not adjusted - so it pairs with the EPS and
   // share count that were reported at the time (spec §4.3: historical years use the fiscal year-end price).
   const yearEndPrices: Record<number, number> = {};
@@ -297,6 +308,7 @@ export function loadRawData(db: Db, symbol: string, years = 10): RawData {
     yearEndPrices,
     peerMultiples,
     filings,
+    ownership,
     peers,
     fetchedAt: now,
     sources: [
