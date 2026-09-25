@@ -1,12 +1,12 @@
 "use client";
 
-// The agent run, phase by phase (in the manner of a research-agent run view): all ten agents in order, each with
+// The agent run, phase by phase (in the manner of a research-agent run view): all eleven agents in order, each with
 // its role, status, time and model calls, and - as soon as it finishes - what it was given and what it produced:
 // the plan, the data fetched, every ratio, the valuation and its assumptions, the signals and their sources, the
 // checks and the written answer. Every card minimizes and maximizes; so does the whole run.
 import clsx from "clsx";
 import {
-  BookOpen, CheckCircle2, ChevronDown, CircleDashed, FileText, Layers, LineChart, Loader2, Maximize2, Minimize2, Newspaper,
+  BookOpen, CheckCircle2, ChevronDown, CircleDashed, FileText, Layers, LineChart, Loader2, Maximize2, Minimize2, Newspaper, Swords,
   Scale, Search, ShieldCheck, Sparkles, Workflow, X, XCircle,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
@@ -21,6 +21,7 @@ export const AGENTS: { key: string; label: string; role: string; icon: typeof Se
   { key: "technical_agent", label: "Technical agent", role: "Moving averages, 52-week range, returns, volatility, RSI, trend label", icon: LineChart, llm: "code" },
   { key: "news_moat_agent", label: "News and moat agent", role: "Reads filings for moat, management and risk signals, each with its source", icon: Newspaper, llm: "small model" },
   { key: "validator", label: "Validator agent", role: "Rule checks on every report; impossible values go back to their worker", icon: ShieldCheck, llm: "code" },
+  { key: "debate_agent", label: "Bull and bear debate", role: "Two analysts argue the case for and the case against from the same figures", icon: Swords, llm: "small model, twice" },
   { key: "synthesis", label: "Persona synthesis", role: "Weights the reports by the persona and writes the analysis; checks every number", icon: Sparkles, llm: "strong model" },
   { key: "response_layer", label: "Response layer", role: "Formats the answer, attaches sources and the disclaimer", icon: FileText, llm: "code" },
 ];
@@ -198,7 +199,7 @@ function AgentCard({ steps, agent, index, finished, open, onToggle, onMaximize, 
   );
 }
 
-/** The ten agents of one run. `defaultOpen` controls whether finished phases start expanded. */
+/** The eleven agents of one run. `defaultOpen` controls whether finished phases start expanded. */
 export function AgentTimeline({ steps, finished, title }: { steps: Step[]; finished: boolean; title?: string }) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [minimized, setMinimized] = useState(false);

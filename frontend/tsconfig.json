@@ -44,7 +44,9 @@
     ".next-orders/types/**/*.ts",
     ".next-orders/dev/types/**/*.ts",
     ".next-turbo/types/**/*.ts",
-    ".next-turbo/dev/types/**/*.ts"
+    ".next-turbo/dev/types/**/*.ts",
+    ".next-mobile/types/**/*.ts",
+    ".next-mobile/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

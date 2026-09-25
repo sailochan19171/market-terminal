@@ -134,6 +134,12 @@ export interface FinalAnalysis {
   note?: string;
   /** The long-form analysis, section by section, each checked like the summary. */
   sections?: { title: string; body: string }[];
+  /**
+   * The case for and the case against, argued separately from the same figures before the persona writes.
+   * Two readers of one set of reports will disagree; setting the disagreement out is more use to a reader than
+   * a single voice that has already settled it (the pattern TradingAgents calls its bull and bear researchers).
+   */
+  debate?: { bull: string[]; bear: string[]; writtenBy: "model" | "data" };
   /** Sentences the checks removed: ungrounded numbers and advice language. Kept for the trace. */
   removed: string[];
   disclaimer: string;

@@ -178,6 +178,22 @@ export function AnswerCard({ a, onPick, onReports }: { a: Analysis; onPick: (que
         </div>
       </div>
 
+      {((final.debate?.bull.length ?? 0) + (final.debate?.bear.length ?? 0)) > 0 && (
+        <div className="grid gap-3 lg:grid-cols-2">
+          <div className="rounded-xl border border-slate-200 p-3.5 dark:border-slate-800">
+            <h3 className="text-sm font-semibold">The case for</h3>
+            <ul className="mt-1.5 space-y-1">{final.debate!.bull.map((s, i) => <li key={i} className="text-sm text-slate-700 dark:text-slate-300">• {s}</li>)}</ul>
+          </div>
+          <div className="rounded-xl border border-slate-200 p-3.5 dark:border-slate-800">
+            <h3 className="text-sm font-semibold">The case against</h3>
+            <ul className="mt-1.5 space-y-1">{final.debate!.bear.map((s, i) => <li key={i} className="text-sm text-slate-700 dark:text-slate-300">• {s}</li>)}</ul>
+          </div>
+          <p className="text-[11px] text-slate-500 lg:col-span-2">
+            Argued separately from the same figures before the analysis was written, so the disagreement stays visible. Neither side is a recommendation.
+          </p>
+        </div>
+      )}
+
       <Sections sections={final.sections ?? []} />
 
       {final.keyNumbers.length > 0 && !(final.companies?.length ?? 0) && (

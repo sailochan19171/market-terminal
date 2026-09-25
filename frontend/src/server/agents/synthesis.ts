@@ -11,6 +11,7 @@ import type {
 } from "./state";
 import { parseJson, type Trace } from "./trace";
 import { contradictions, numberPool, ungroundedNumbers, wrongComparisons } from "./validator";
+import { debate as argueBothSides } from "./debate";
 
 export interface CompanyReports {
   raw: RawData;
@@ -450,6 +451,14 @@ export async function synthesise(trace: Trace, input: SynthesisInput): Promise<{
   // US amounts are written in millions and billions.
   for (const v of numberPool(reports)) if (Math.abs(v) >= 1e6) pool.push(v / 1e6, v / 1e9);
   const facts = companies.map((c) => factSheet(c, persona)).join("\n\n");
+  // The case for and the case against, argued from these same facts before anything is written up. Skipped on
+  // a question about one ratio, where there is nothing to debate, and when the call budget is nearly spent.
+  const wantsDebate = (input.intent === "full_analysis" || input.intent === "comparison") && trace.remainingMs() > 25_000;
+  // Recorded as its own phase so the timeline shows both sides being argued, not a gap before the writing.
+  const bothSides = wantsDebate
+    ? (await trace.run("debate_agent", { companies: companies.map((c) => c.raw.symbol) }, () =>
+        argueBothSides(trace, { persona, companies, facts, pool, question: input.question }))) ?? undefined
+    : undefined;
   // In a comparison the arithmetic is done here, not by the writer (spec principle 1).
   const compared = comparisonFacts(companies);
   const warnings = input.validation.warnings.map((w) => w.detail);
@@ -473,6 +482,7 @@ export async function synthesise(trace: Trace, input: SynthesisInput): Promise<{
     companies: companies.length > 1 ? perCompany : undefined,
     comparison: compared.length ? compared.map((f) => f.sentence) : undefined,
     missingData,
+    debate: bothSides,
     disclaimer: DISCLAIMER,
     removed: [],
   };
@@ -489,6 +499,7 @@ export async function synthesise(trace: Trace, input: SynthesisInput): Promise<{
     `You write an analysis ${inspiredBy(persona)}. Never write as if you are ${persona.inspiredBy}, never use "I", and never quote or paraphrase anyone.`,
     "Use ONLY the FACTS supplied. Every number you write must appear in the FACTS exactly as written there. Never calculate a new number, never round differently, never estimate.",
     "When you compare a figure with a median or with peers, use the word the FACTS give (above, below, in line with); never decide the direction yourself.",
+    "Two analysts have argued the case for and the case against from these same facts. Weigh both: a strength the case against answers is not a clean strength, and a concern the case for answers is not a clean concern. Never repeat a point from either side that the FACTS do not carry.",
     "If something important is not in the FACTS, say it is not available. Keep the company's own history and its sector peers distinct: never call an own median a sector median.",
     "Never tell the reader to buy, sell, hold, accumulate or exit, never give a price target or entry level, and never predict the share price. Describe what the figures show against the persona's principles and let the reader judge.",
     focus,
@@ -497,7 +508,10 @@ export async function synthesise(trace: Trace, input: SynthesisInput): Promise<{
     input.allowFollowUp ? "Ask for a follow_up only if something essential to this persona's judgement is missing and that worker could supply it: data_agent fetches the company's recent filing documents (annual report, presentations) for more evidence on moat and management; otherwise null." : "",
     "Plain sentences, no markdown.",
   ].filter(Boolean).join(" ");
-  const user = `QUESTION: ${input.question}\n\nFACTS\n${facts}${compared.length ? `\n\nCOMPARISON WORKED OUT HERE (use these, never compare the numbers yourself)\n${compared.map((f) => f.sentence).join("\n")}` : ""}${warnings.length ? `\n\nDATA WARNINGS (mention any that matter)\n${warnings.join("\n")}` : ""}\n\nMISSING DATA\n${missingData.slice(0, 15).join("\n") || "none"}`;
+  const debated = bothSides && (bothSides.bull.length || bothSides.bear.length)
+    ? `\n\nTHE CASE FOR (argued separately from these same facts)\n${bothSides.bull.join("\n")}\n\nTHE CASE AGAINST\n${bothSides.bear.join("\n")}`
+    : "";
+  const user = `QUESTION: ${input.question}\n\nFACTS\n${facts}${debated}${compared.length ? `\n\nCOMPARISON WORKED OUT HERE (use these, never compare the numbers yourself)\n${compared.map((f) => f.sentence).join("\n")}` : ""}${warnings.length ? `\n\nDATA WARNINGS (mention any that matter)\n${warnings.join("\n")}` : ""}\n\nMISSING DATA\n${missingData.slice(0, 15).join("\n") || "none"}`;
 
   const fallback = () => {
     const obs = observations(primary, persona);

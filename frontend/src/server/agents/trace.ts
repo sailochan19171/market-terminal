@@ -170,9 +170,11 @@ export class Trace {
       }
       if (i > 0) {
         if (!budgetLeft() || this.remainingMs() < 5_000) break;
-        this.llmCalls++;
         this.write({ agent, stage: "llm", at: now(), durationMs: result.latencyMs, output: { text: null, model: result.model, error: result.error, fellBackTo: step.label } });
       }
+      // Every attempt counts against the request's allowance, the first one included: a step down the ladder is
+      // another call on another model, not a free retry.
+      this.llmCalls++;
       result = await (this.chatFn ?? chat)({ ...opts, host: step.host ?? raw.host, model: step.model, timeoutMs: i > 0 ? fitted() : opts.timeoutMs });
       if (result.text || !RETRYABLE.test(result.error ?? "")) break;
     }

@@ -31,6 +31,15 @@ news_moat_agent:
   temperature: 0
   timeout_ms: 30000
   max_retries: 1
+# The two analysts who argue the case for and the case against before the persona writes. The small model:
+# each side is a short piece of reasoning over facts already computed, and it leaves the strong model's
+# allowance for the writing itself.
+debate_agent:
+  model: small
+  temperature: 0.2
+  timeout_ms: 25000
+  max_retries: 1
+  max_wait_ms: 6000
 validator:
   timeout_ms: 5000
 synthesis:

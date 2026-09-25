@@ -2,7 +2,7 @@
 //
 // The trace keeps every input and output in full for review; this is the part a reader follows live - the plan, the
 // data fetched, every ratio, the valuation and its assumptions, the signals and their sources, the checks - in plain
-// labels and formatted numbers, so each of the ten phases can be opened and read on its own.
+// labels and formatted numbers, so each of the eleven phases can be opened and read on its own.
 import type { InputResult } from "./input";
 import type {
   FinalAnalysis, QualitativeReport, RatioReport, RawData, ResearchPlan, TechnicalReport, ValidationReport, ValuationReportOut,
@@ -209,6 +209,12 @@ export function digest(agent: string, stage: string, input: unknown, output: unk
   try {
     const cur: Cur = is<{ currency: Cur }>(input, "currency") && input.currency === "USD" ? "USD" : "INR";
     if (stage === "error") return { headline: `Failed: ${is<{ message: string }>(output, "message") ? output.message : "unknown error"}` };
+    if (agent === "debate_agent" && is<{ bull: string[]; bear: string[]; writtenBy: string }>(output, "bull")) {
+      return {
+        headline: `${output.bull.length} points for, ${output.bear.length} against (${output.writtenBy === "model" ? "argued by the model" : "from the rules"})`,
+        lists: [{ title: "The case for", rows: output.bull }, { title: "The case against", rows: output.bear }],
+      };
+    }
     if (stage === "regenerating" && is<{ problems: string[] }>(output, "problems")) {
       return { headline: `Written again: ${output.problems.length} problem${output.problems.length === 1 ? "" : "s"} in the first draft`, lists: [{ title: "What the checks found", rows: output.problems }] };
     }

@@ -55,6 +55,8 @@ export interface Final {
   /** In a comparison: each company's own scores and key numbers, and the comparison worked out in code. */
   companies?: { symbol: string; company: string; currency: Currency; categoryScores: Final["categoryScores"]; personaFit: number | null; keyNumbers: Final["keyNumbers"] }[];
   comparison?: string[];
+  /** The case for and the case against, argued separately before the analysis was written. */
+  debate?: { bull: string[]; bear: string[]; writtenBy: "model" | "data" };
   sections?: { title: string; body: string }[];
 }
 export interface StepDetail {

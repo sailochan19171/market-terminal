@@ -48,7 +48,7 @@ run(async (browser) => {
   check("a US company is shown in dollars", /US · NASDAQ/.test(apple) && /\$\d/.test(apple));
   for (const label of ["Persona fit", "Fundamental", "Valuation", "Technical", "Qualitative"]) check(`the ${label} score card`, new RegExp(label, "i").test(apple));
   check("the key ratios table names formula and source", /Key ratio/i.test(apple) && /_v1/.test(apple) && /SEC EDGAR/.test(apple));
-  check("the timeline shows all 10 phases completed", /Agent run · 10 of 10 phases/.test(apple));
+  check("the timeline shows all 11 phases completed", /Agent run · 11 of 11 phases/.test(apple));
   check("each phase shows its own detail", /Ratio engine/.test(apple) && /ratios computed across/.test(apple) && /(Plan written by|Default plan)/.test(apple));
   check("the long-form analysis has sections", /Profitability and returns/.test(apple) && /Balance sheet and cash flow/.test(apple));
 
@@ -58,9 +58,9 @@ run(async (browser) => {
   check("an agent phase opens full screen", /Restore/.test(await body(page)) && /Profitability/i.test(await body(page)));
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Minimize this analysis" }).first().click();
-  check("an analysis minimizes to one line", !/Agent run · 10 of 10 phases/.test(await body(page)));
+  check("an analysis minimizes to one line", !/Agent run · 11 of 11 phases/.test(await body(page)));
   await page.getByRole("button", { name: "Expand this analysis" }).first().click();
-  check("and expands again", /Agent run · 10 of 10 phases/.test(await body(page)));
+  check("and expands again", /Agent run · 11 of 11 phases/.test(await body(page)));
   check("the disclaimer is attached", /This is educational research, not investment advice/.test(apple));
   check("no directive language", violations(apple).length === 0, violations(apple));
   check("no undefined / NaN / null leaks", !BAD_TEXT.test(apple), apple.match(BAD_TEXT)?.[0] ?? "");

@@ -14,6 +14,7 @@ import { rsi, sma, trendLabel } from "../src/server/agents/technical";
 import { Trace } from "../src/server/agents/trace";
 import { contradictions, numberPool, ungroundedNumbers, wrongComparisons } from "../src/server/agents/validator";
 import { comparisonFacts } from "../src/server/agents/synthesis";
+import { debate } from "../src/server/agents/debate";
 import { dcf, justifiedPb, RANGES, valuationReport } from "../src/server/agents/valuation";
 import { findUsCompanies } from "../src/server/agents/input";
 import { setListingsForTests } from "../src/server/agents/providers/us";
@@ -365,6 +366,47 @@ async function main() {
       return model;
     })(), "openai/gpt-oss-20b");
     Object.assign(cfg, { LLM_PROVIDER: saved.p, LLM_API_KEY: saved.k, LLM_BACKUP_PROVIDER: saved.bp, LLM_BACKUP_API_KEY: saved.bk });
+  }
+
+  console.log("\nThe case for and the case against are argued under the same rules as the analysis");
+  {
+    const one = {
+      raw: { symbol: "TCS", company: "Tata Consultancy Services Limited", currency: "INR", ticker: "TCS", exchange: "NSE", market: "IN", sectorSet: "standard", annual: [], quote: null, marketCap: null, industry: null, fiscalYearEnd: null, unavailable: [] },
+      ratios: {
+        years: [2026], currency: "INR",
+        categories: { profitability: { netMargin: { formulaId: "netMargin_v1", label: "Net profit margin", unit: "percent", series: [{ year: 2026, value: 0.184, inputs: {} }], latest: 0.184, median10y: 0.19, min10y: null, max10y: null, std10y: null, trend: null, consistency: null, sectorMedian: null, percentileInSector: null } } },
+        qualityScores: { dupont: [], piotroski: { score: null, tests: [] }, altmanZ: { score: null, zone: null, variant: "" }, beneishM: { score: null, flag: null } },
+        categoryScores: { fundamental: null, growth: null, valuation: null, financialHealth: null }, unavailable: [], peers: { count: 0, industry: null },
+      },
+      valuation: null, technical: null, qualitative: null,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+    const facts = "TCS net profit margin 18.4% in FY2026, against its own 8-year median of 19.0%.";
+    const pool = numberPool({ netMargin: 0.184, ownMedian: 0.19 });
+    // Three points on each side: one sound, one carrying a figure no report holds, one telling the reader what to do.
+    const replies = (side: string) => JSON.stringify({ points: [
+      `Net profit margin is 18.4% in FY2026, against its own 8-year median of 19.0%.`,
+      `${side === "bull" ? "Growth" : "Decline"} of 42.7% is the story here.`,
+      "Investors should buy the stock at this level.",
+    ] });
+    let asked = 0;
+    const t = new Trace(null, undefined, async (o) => {
+      asked++;
+      return { text: replies(/AGAINST/.test(o.system ?? "") ? "bear" : "bull"), model: "test", promptTokens: null, completionTokens: null, latencyMs: 1 };
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const args = { persona: personas()[0], companies: [one], facts, pool, question: "Analyse TCS as a long-term holding" } as any;
+    const d = await debate(t, args);
+    eq("both sides are argued", asked, 2);
+    eq("the model's points are used", d.writtenBy, "model");
+    eq("a figure no report holds is dropped from the case for", d.bull, ["Net profit margin is 18.4% in FY2026, against its own 8-year median of 19.0%."]);
+    eq("and from the case against", d.bear.length, 1);
+    eq("neither side tells the reader what to do", d.bull.concat(d.bear).some((p) => violations(p).length > 0), false);
+
+    // With no model, the rules' own strengths and concerns stand in, so the section is never empty.
+    const quiet = new Trace(null, undefined, async () => ({ text: null, model: "", promptTokens: null, completionTokens: null, latencyMs: 1, error: "no key" }));
+    const fallback = await debate(quiet, args);
+    eq("without a model the section falls back to the rules", fallback.writtenBy, "data");
   }
 
   db.close();
