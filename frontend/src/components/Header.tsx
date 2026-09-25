@@ -7,6 +7,7 @@ import {
   PackageCheck, Sparkles, UserCheck, Users, X, type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
+import { createPortal } from "react-dom";
 import { usePathname, useRouter } from "next/navigation";
 import { BrandMark } from "@/components/BrandMark";
 import { SignIn } from "@/components/SignIn";
@@ -282,7 +283,11 @@ function MobileMenu({ onClose, pathname }: { onClose: () => void; pathname: stri
     };
   }, [onClose]);
 
-  return (
+  // Nothing to portal into while the page is being rendered on the server.
+  if (typeof document === "undefined") return null;
+  // Rendered into the body: the header it is declared in has a backdrop filter, and that makes the header the
+  // containing block for anything fixed inside it - the panel would be trapped at the height of the header.
+  return createPortal((
     <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Site navigation menu">
       <button className="motion-fade fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity" aria-label="Close menu" onClick={onClose} />
       <nav className="motion-rise relative z-10 flex h-full w-[min(22rem,88vw)] flex-col bg-white shadow-2xl dark:bg-slate-950">
@@ -394,7 +399,7 @@ function MobileMenu({ onClose, pathname }: { onClose: () => void; pathname: stri
         </div>
       </nav>
     </div>
-  );
+  ), document.body);
 }
 
 export function Header() {
@@ -465,8 +470,8 @@ export function Footer() {
   if (pathname?.startsWith("/agents")) return null;
   return (
     <footer className="mt-16 border-t border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
-      <div className="mx-auto grid max-w-[1400px] gap-8 px-4 py-10 sm:grid-cols-2 sm:px-6 lg:grid-cols-6">
-        <div className="lg:col-span-1">
+      <div className="mx-auto grid max-w-[1400px] grid-cols-2 gap-x-4 gap-y-7 px-4 py-10 sm:grid-cols-2 sm:gap-8 sm:px-6 lg:grid-cols-6">
+        <div className="col-span-2 sm:col-span-2 lg:col-span-1">
           <p className="flex items-center gap-2 font-semibold"><BrandMark size={26} />Market Terminal</p>
           <p className="mt-2 text-sm text-slate-500">A personal research tool built on exchange-published data. Not affiliated with NSE, BSE or any data vendor.</p>
         </div>
@@ -475,7 +480,7 @@ export function Footer() {
             <p className="text-sm font-semibold">{g.label}</p>
             <ul className="mt-3 space-y-2">
               {g.sections.flatMap((s) => s.items).map((it) => (
-                <li key={it.href}><Link href={it.href} className="text-sm text-slate-500 transition hover:text-indigo-600">{it.label}</Link></li>
+                <li key={it.href}><Link href={it.href} className="block py-0.5 text-[13px] leading-snug text-slate-500 transition hover:text-indigo-600 sm:text-sm">{it.label}</Link></li>
               ))}
             </ul>
           </div>
