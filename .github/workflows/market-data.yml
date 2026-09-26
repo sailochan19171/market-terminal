@@ -1,8 +1,9 @@
 # The data pipeline, running on GitHub's machines instead of one PC.
 #
 # Every 15 minutes it pulls the exchanges' latest announcements, reads any new order filing out of its PDF, and
-# writes both straight into the hosted Turso database the site reads from (MARKET_DB=turso). So the site keeps
-# gaining data whether or not any particular computer is switched on.
+# writes both straight into the hosted Turso database the site reads from (MARKET_DB=turso). After the close it
+# also pulls the day's prices and the rest of NSE's corporate feeds. So the site keeps gaining data whether or not
+# any particular computer is switched on.
 #
 # The PC at home can keep running the same jobs: both write the same rows keyed by announcement id, so whichever
 # gets there first wins and the other simply finds nothing new.
@@ -58,8 +59,10 @@ jobs:
       - name: BSE announcements
         run: npx tsx src/server/cli.ts announcements --years 0.02
 
-      # NSE's own feed. Its API is stricter about where a request comes from, so a failure here is logged and
-      # the run carries on with what BSE gave us.
+      # NSE's own feed. Its API is stricter about where a request comes from, so this may fail on a GitHub
+      # runner where it succeeds from a home connection. The run carries on with what BSE gave us - but the
+      # status step at the end fails the run if NSE has actually fallen behind, so a blocked feed cannot sit
+      # behind a green tick for days.
       - name: NSE announcements
         continue-on-error: true
         run: npx tsx src/server/cli.ts nse-corporate --only announcements
@@ -68,6 +71,30 @@ jobs:
       - name: Read new order filings
         run: npx tsx scripts/orders-backfill.ts 7 60
 
+      # The day's prices. Both exchanges publish one file after the close (about 18:00 IST), so there is nothing
+      # new to fetch during the session; a run that finds the file already stored does nothing. Every dataset
+      # below used to come only from the PC at home, which is why prices stopped the moment it stopped.
+      - name: BSE daily prices
+        continue-on-error: true
+        run: npx tsx src/server/cli.ts bhavcopy --years 0.02
+
+      - name: NSE daily prices
+        continue-on-error: true
+        run: npx tsx src/server/cli.ts nse-bhavcopy --years 0.02
+
+      # Corporate actions, board meetings, results and insider dealings. Quarterly and event-driven, so they are
+      # cheap to re-check and a missed day costs nothing; shareholding is left to the deeper sync, which walks
+      # every company's filing history rather than a date window.
+      - name: NSE corporate feeds
+        continue-on-error: true
+        run: npx tsx src/server/cli.ts nse-corporate --only actions,board-meetings,results,integrated-results,insider
+
+      - name: BSE corporate actions
+        continue-on-error: true
+        run: npx tsx src/server/cli.ts corp-actions
+
+      # Fails the run when any dataset has fallen behind, whatever the steps above reported. A green run over
+      # two-day-old prices is worse than a red one, because nobody goes looking for a problem the log denies.
       - name: What the run found
         if: always()
-        run: npx tsx scripts/pipeline-status.ts
+        run: npx tsx scripts/pipeline-status.ts --strict
