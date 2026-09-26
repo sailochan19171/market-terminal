@@ -41,9 +41,8 @@ const istNow = () => new Date(Date.now() + 5.5 * 3_600_000);
 const isWeekend = (d: Date) => d.getUTCDay() === 0 || d.getUTCDay() === 6;
 
 /**
- * How long a dataset may go without new rows before something is wrong. A weekend has no filings and no session,
- * so the allowance stretches over it rather than crying wolf every Saturday: three days covers Friday evening to
- * Monday morning, and a long weekend is caught by the next run after the holiday.
+ * How long the order reader may go without a new row. Order filings are not a daily event, so this one is judged
+ * by the clock rather than the calendar, and the allowance stretches over a weekend.
  */
 function allowanceHours(base: number) {
   const d = istNow();
@@ -76,8 +75,8 @@ function main() {
   // Each dataset, with how stale it may be before the run is called a failure. Announcements arrive through the
   // day, so a few hours of silence in market hours is already odd; prices arrive once, after the close.
   const checks: Check[] = [
-    { label: "BSE announcements", newest: t("SELECT MAX(news_dt) FROM announcement"), count: n("SELECT COUNT(*) FROM announcement"), allowHours: 24 },
-    { label: "NSE announcements", newest: t("SELECT MAX(ann_dt) FROM nse_announcement"), count: n("SELECT COUNT(*) FROM nse_announcement"), allowHours: 24 },
+    { label: "BSE announcements", newest: t("SELECT MAX(news_dt) FROM announcement"), count: n("SELECT COUNT(*) FROM announcement"), allowHours: null, session: true },
+    { label: "NSE announcements", newest: t("SELECT MAX(ann_dt) FROM nse_announcement"), count: n("SELECT COUNT(*) FROM nse_announcement"), allowHours: null, session: true },
     { label: "BSE daily prices", newest: t("SELECT MAX(trade_date) FROM bhavcopy"), count: n("SELECT COUNT(*) FROM bhavcopy"), allowHours: null, session: true },
     { label: "NSE daily prices", newest: t("SELECT MAX(trade_date) FROM nse_bhavcopy"), count: n("SELECT COUNT(*) FROM nse_bhavcopy"), allowHours: null, session: true },
     { label: "orders read", newest: t("SELECT MAX(announced_at) FROM company_order"), count: n("SELECT COUNT(*) FROM company_order WHERE is_order = 1"), allowHours: 48 },
@@ -90,14 +89,14 @@ function main() {
     if (c.session) {
       const day = (c.newest ?? "").slice(0, 10);
       late = day < session;
-      why = `the newest price file is for ${day || "no day at all"}, and the session of ${session} should be in by now`;
+      why = `its newest row is from ${day || "no day at all"}, and the session of ${session} should be in by now`;
     } else {
       const h = hoursSince(c.newest);
       const allow = allowanceHours(c.allowHours ?? 24);
       late = h === null || !Number.isFinite(h) || h > allow;
       why = `it last gained a row ${ago(c.newest)}, past the ${allow} h this dataset is allowed`;
     }
-    console.log(`${late ? "BEHIND  " : "ok      "}${c.label.padEnd(18)}: ${c.count.padStart(9)} rows (newest ${c.session ? (c.newest ?? "never") : ago(c.newest)})`);
+    console.log(`${late ? "BEHIND  " : "ok      "}${c.label.padEnd(18)}: ${c.count.padStart(9)} rows (newest ${c.session ? `${(c.newest ?? "never").slice(0, 10)}, ${ago(c.newest)}` : ago(c.newest)})`);
     if (late) behind.push(`${c.label}: ${why}`);
   }
 

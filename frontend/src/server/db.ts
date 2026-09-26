@@ -50,6 +50,9 @@ export class Db {
       this.remote = new RemoteDriver(target.url, target.token);
       return;
     }
+    // Anything that is not one of the two kinds is a mistake at the call site, and opening the local file instead
+    // would hide it: a job would report on the copy on this machine while believing it was reading the hosted one.
+    if (target.kind !== "local") throw new Error(`unknown database kind '${String((target as { kind: string }).kind)}': use { kind: "local" } or { kind: "remote", url, token }`);
     ensureDirs();
     this.local = new (sqlite().DatabaseSync)(target.file ?? config.DB_PATH, { readOnly: target.readOnly ?? false });
     this.local.exec(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS}`);
