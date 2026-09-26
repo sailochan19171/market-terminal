@@ -11,7 +11,7 @@
 import type { Persona } from "./config";
 import { scrub } from "./compliance";
 import type { Trace } from "./trace";
-import { contradictions, numberPool, ungroundedNumbers } from "./validator";
+import { contradictions, ungroundedNumbers } from "./validator";
 import { observations, type CompanyReports } from "./synthesis";
 
 export interface Debate { bull: string[]; bear: string[]; writtenBy: "model" | "data" }
