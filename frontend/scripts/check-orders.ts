@@ -4,6 +4,7 @@
 import { Db } from "../src/server/db";
 import { amountsInCrore, isRealCustomer, parseByRules, parseWithModel } from "../src/server/orders/extract";
 import { annualValue, companyOrders, filterOptions, listOrders } from "../src/server/orders/query";
+import { reconcile, rupeesFromWords, wordsNear } from "../src/server/orders/amountWords";
 import { ensureSchema, save } from "../src/server/orders/store";
 
 let failed = 0;
@@ -144,6 +145,25 @@ async function main() {
     eq("the company dropdown offers only companies on screen", options.companies.map((o) => o.value), ["ACME", "TINY"]);
     eq("the customer dropdown is built from the orders", options.customers.map((o) => o.value), ["NHAI"]);
     db.close();
+  }
+
+  console.log("\nThe amount a filing writes out in words is the check on its digits");
+  {
+    // A SEBI disclosure states the value twice. The digits are what a two-column PDF breaks: HEG filed one order
+    // of Rs. 217.56 Crore twice, and on the second copy "Rs. 217.56" was separated from the word "Crore" and
+    // came back as 17.56. The spelling cannot be broken that way, so it decides.
+    eq("Indian nesting: two hundred seventeen crore fifty six lakh", rupeesFromWords("Two Hundred Seventeen Crore Fifty Six Lakh"), 2_175_600_000);
+    eq("a larger scale closes over the smaller ones before it", rupeesFromWords("Five Thousand Four Hundred Crore"), 54_000_000_000);
+    eq("lakh and thousand together", rupeesFromWords("Ninety Five Lakh Thirty Three Thousand"), 9_533_000);
+    eq("words with no number in them are not an amount", rupeesFromWords("only, inclusive of GST"), null);
+
+    const split = "7. Broad consideration or size of the Rs. 217.56 (Rupees Two Hundred order(s)/contract(s); Seventeen Crore Fifty Six Lakh only), inclusive of GST";
+    const at = split.indexOf("217.56");
+    eq("the form's own (s) does not cut the amount short", wordsNear(split, at), 217.56);
+    eq("a digit lost to the layout is put back", reconcile(17.56, wordsNear(split, at)), { value: 217.56, corrected: true });
+    eq("digits and words that agree are left alone", reconcile(217.56, 217.56), { value: 217.56, corrected: false });
+    eq("a rounded spelling does not overrule a precise figure", reconcile(12.34, 12.34).corrected, false);
+    eq("no spelling at all leaves the digits standing", reconcile(45.5, null), { value: 45.5, corrected: false });
   }
 
   console.log(failed ? `\n${failed} check${failed === 1 ? "" : "s"} failed` : "\nAll checks passed");

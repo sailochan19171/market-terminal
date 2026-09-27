@@ -78,11 +78,42 @@ function toView(r: Row): OrderView {
 function collapseDuplicates(rows: OrderView[]): OrderView[] {
   const byKey = new Map<string, OrderView>();
   for (const o of rows) {
-    const key = `${o.symbol ?? o.company}|${o.announcedAt.slice(0, 10)}|${o.contractValueCr?.toFixed(2) ?? "?"}`;
+    // One order, one row: the same company naming the same customer on the same day. The value is deliberately
+    // not part of the key - a company that files the same order twice can have the two copies read differently
+    // (a column layout split "Rs. 217.56" from the word "Crore" and the second copy came back as 17.56), and
+    // keying on the value would show a reader both figures and let them pick the wrong one.
+    const who = (o.customer ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 40);
+    const key = `${o.symbol ?? o.company}|${o.announcedAt.slice(0, 10)}|${who}`;
     const kept = byKey.get(key);
-    if (!kept || (kept.exchange !== "NSE" && o.exchange === "NSE")) byKey.set(key, o);
+    // Two rows under one key are the same order only when their values agree, or when one reads as the other
+    // with a digit lost. A company really can win two orders from one customer on one day, and those stay apart.
+    if (!kept) { byKey.set(key, o); continue; }
+    if (!sameValue(o, kept)) { byKey.set(`${key}|${o.contractValueCr ?? "?"}`, o); continue; }
+    if (better(o, kept)) byKey.set(key, o);
   }
   return [...byKey.values()];
+}
+
+/**
+ * Whether two readings are of one order. The same figure, near enough; a figure missing against one that has
+ * one; or a figure that is the other with a leading digit dropped - "17.56" against "217.56", which is what a
+ * two-column filing does to a reader when it separates the number from the word "Crore".
+ */
+function sameValue(a: OrderView, b: OrderView): boolean {
+  const x = a.contractValueCr, y = b.contractValueCr;
+  if (x === null || y === null) return true;
+  if (Math.abs(x - y) <= Math.max(0.01, Math.max(x, y) * 0.005)) return true;
+  const [small, large] = x < y ? [x, y] : [y, x];
+  return large.toFixed(2).endsWith(small.toFixed(2));
+}
+
+/** Which of two copies of one order to show: the surer reading, then NSE's, then the larger figure. */
+function better(o: OrderView, kept: OrderView): boolean {
+  const conf = (r: OrderView) => r.confidence ?? 0;
+  if (conf(o) !== conf(kept)) return conf(o) > conf(kept);
+  if ((o.exchange === "NSE") !== (kept.exchange === "NSE")) return o.exchange === "NSE";
+  // A value that lost a leading digit is smaller than the one that kept it, never larger.
+  return (o.contractValueCr ?? -1) > (kept.contractValueCr ?? -1);
 }
 
 /** The day of the most recent order on file, so "today" can fall back to it when nothing has been filed yet. */

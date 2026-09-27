@@ -70,3 +70,13 @@ small_models:
   openai: gpt-5.6-luna-mini
   anthropic: claude-haiku-4-5-20251001
   gemini: gemini-2.5-flash
+
+# Reading the order book off an investor presentation's slides, where the patterns cannot pick it out of the
+# jumble a deck's text becomes. The small model, on a few hundred characters around each mention - never the
+# whole deck - so a hundred-page presentation costs about what a paragraph costs.
+orderbook_agent:
+  model: small
+  temperature: 0
+  timeout_ms: 30000
+  max_retries: 1
+  max_wait_ms: 8000

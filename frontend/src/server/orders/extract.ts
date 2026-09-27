@@ -14,6 +14,7 @@ import { extract as extractText } from "../docs/extract";
 import { config } from "../config";
 import { settings } from "../agents/config";
 import { chat } from "../research/llm";
+import { reconcile, wordsNear } from "./amountWords";
 import { available as llmAvailable } from "../research/llm";
 import { markSeen, save, seenIds, type OrderRow } from "./store";
 
@@ -26,6 +27,23 @@ export interface Candidate {
 
 const NSE_SUBJECT = "Bagging/Receiving of orders/contracts";
 const BSE_SUBCATEGORY = "Award of Order / Receipt of Order";
+
+/**
+ * An order win does not always reach the exchange's order category. Career Point filed one under "Disclosure of
+ * material issue" and Apollo Micro announced one inside an investor presentation, and both were missed while
+ * every filing the exchange had tagged was read. These phrases find the rest by what the filing says it is.
+ *
+ * A wrong guess here costs one PDF and one model call, and the reader marks what it turns out to be; a missed
+ * order costs a company that never appears on the dashboard at all.
+ */
+const ORDER_PHRASES = [
+  "receipt of order", "award of order", "awarded the contract", "awarded a contract", "work order",
+  "letter of award", "letter of intent", "purchase order", "bags order", "bagged", "secures order",
+  "secured an order", "wins order", "won order", "order win", "contract award", "emerges as l1",
+  "lowest bidder", "receives order", "received an order", "new order",
+];
+const phraseClause = (column: string) => `(${ORDER_PHRASES.map(() => `lower(${column}) LIKE ?`).join(" OR ")})`;
+const phraseArgs = ORDER_PHRASES.map((p) => `%${p}%`);
 
 /** Announcements filed under the exchanges' own order categories that have not been read yet. */
 export function candidates(db: Db, opts: { days?: number; limit?: number; symbol?: string | null; redo?: boolean } = {}): Candidate[] {
@@ -50,6 +68,28 @@ export function candidates(db: Db, opts: { days?: number; limit?: number; symbol
       ORDER BY b.news_dt DESC LIMIT ?`,
     opts.symbol ? [BSE_SUBCATEGORY, since, opts.symbol, limit * 3] : [BSE_SUBCATEGORY, since, limit * 3]);
 
+  // The same two feeds again, this time by what the filing says rather than how it was filed. Announcements
+  // already listed above are dropped when the two sets are merged, so nothing is fetched twice.
+  const wideLimit = Math.max(10, Math.floor(limit / 2));
+  const nseWide = db.all<Row>(
+    `SELECT a.ann_id AS id, a.symbol, a.company, a.ann_dt, a.subject, a.pdf_url
+       FROM nse_announcement a
+      WHERE a.subject <> ? AND a.ann_dt >= ? AND a.pdf_url LIKE 'http%'
+        AND (${phraseClause("a.subject")} OR ${phraseClause("a.details")})
+      ${opts.symbol ? "AND a.symbol = ?" : ""}
+      ORDER BY a.ann_dt DESC LIMIT ?`,
+    opts.symbol ? [NSE_SUBJECT, since, ...phraseArgs, ...phraseArgs, opts.symbol, wideLimit] : [NSE_SUBJECT, since, ...phraseArgs, ...phraseArgs, wideLimit]);
+
+  const bseWide = db.all<Row>(
+    `SELECT b.news_id AS id, b.scrip_cd, b.headline, b.news_dt, b.pdf_url, m.symbol, m.company
+       FROM announcement b
+       LEFT JOIN company_metrics m ON m.bse_code = b.scrip_cd
+      WHERE b.subcategory <> ? AND b.news_dt >= ? AND b.pdf_url LIKE 'http%'
+        AND ${phraseClause("b.headline")}
+      ${opts.symbol ? "AND m.symbol = ?" : ""}
+      ORDER BY b.news_dt DESC LIMIT ?`,
+    opts.symbol ? [BSE_SUBCATEGORY, since, ...phraseArgs, opts.symbol, wideLimit] : [BSE_SUBCATEGORY, since, ...phraseArgs, wideLimit]);
+
   const all: Candidate[] = [
     ...nse.map((r) => ({
       id: `NSE:${String(r.id)}`, exchange: "NSE" as const, symbol: r.symbol ? String(r.symbol) : null, scripCd: null,
@@ -60,7 +100,18 @@ export function candidates(db: Db, opts: { days?: number; limit?: number; symbol
       company: r.company ? String(r.company) : (r.headline ? String(r.headline).split(" - ")[0] : null),
       announcedAt: String(r.news_dt), headline: String(r.headline ?? BSE_SUBCATEGORY), pdfUrl: String(r.pdf_url),
     })),
-  ].sort((a, b) => b.announcedAt.localeCompare(a.announcedAt));
+    ...nseWide.map((r) => ({
+      id: `NSE:${String(r.id)}`, exchange: "NSE" as const, symbol: r.symbol ? String(r.symbol) : null, scripCd: null,
+      company: r.company ? String(r.company) : null, announcedAt: String(r.ann_dt), headline: String(r.subject ?? ""), pdfUrl: String(r.pdf_url),
+    })),
+    ...bseWide.map((r) => ({
+      id: `BSE:${String(r.id)}`, exchange: "BSE" as const, symbol: r.symbol ? String(r.symbol) : null, scripCd: r.scrip_cd ? String(r.scrip_cd) : null,
+      company: r.company ? String(r.company) : (r.headline ? String(r.headline).split(" - ")[0] : null),
+      announcedAt: String(r.news_dt), headline: String(r.headline ?? ""), pdfUrl: String(r.pdf_url),
+    })),
+  ]
+    .filter((c, i, list) => list.findIndex((o) => o.id === c.id) === i)
+    .sort((a, b) => b.announcedAt.localeCompare(a.announcedAt));
 
   // The same order is filed with both exchanges, so a BSE filing is left out only once the company's order for
   // that day has actually been read - otherwise a day whose NSE filing was never read (it arrived late, or its
@@ -162,8 +213,11 @@ function valueFromRules(text: string): { value: number | null; phrase: string | 
   for (const re of VALUE_LABELS) {
     const m = text.match(re);
     if (!m) continue;
-    const value = toCrore(m[1], m[2]);
-    if (value !== null) return { value, phrase: m[0].trim().slice(0, 60) };
+    const digits = toCrore(m[1], m[2]);
+    if (digits === null) continue;
+    // The same amount spelled out in the brackets that follow, which is the part a column layout cannot break.
+    const { value, corrected } = reconcile(digits, wordsNear(text, (m.index ?? 0) + m[0].length - 20));
+    if (value !== null) return { value, phrase: `${m[0].trim().slice(0, 60)}${corrected ? " (read from the amount in words)" : ""}` };
   }
   // Nothing labelled: fall back to the largest rupee amount in the filing.
   const amounts = amountsInCrore(text);

@@ -11,6 +11,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { DataTable } from "@/components/DataTable";
 import { CapSlider, DateBox, isoDay, NumberBox, Picker, ShareChip, type Option } from "@/components/orders/controls";
+import { OrderbookView } from "@/components/orders/orderbook";
 import { Badge, Card, ErrorNote, Loading, PageTitle, Segmented, Stat } from "@/components/ui";
 import { useApi } from "@/lib/api";
 import { inrCrore } from "@/lib/format";
@@ -70,11 +71,14 @@ function periodOf(from: string, to: string): string {
 }
 
 const day = (iso: string) => new Date(iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-const months = (m: number | null) => (m === null ? "Not mentioned" : m >= 1 ? `${Number.isInteger(m) ? m : m.toFixed(1)} months` : `${Math.round(m * 30.44)} days`);
+const months = (m: number | null) =>
+  m === null ? "Not mentioned"
+    : m < 1 ? `${Math.round(m * 30.44)} days`
+      : `${Math.round(m)} month${Math.round(m) === 1 ? "" : "s"}`;
 const value = (v: number | null) => (v === null ? "Not mentioned" : inrCrore(v));
 
 export default function OrdersPage() {
-  const [tab, setTab] = useState<"orders" | "companies">("orders");
+  const [tab, setTab] = useState<"orderbook" | "orders" | "companies">("orders");
   return (
     <>
       <PageTitle title="Order wins"
@@ -84,8 +88,8 @@ export default function OrdersPage() {
         <TriangleAlert size={16} className="mt-0.5 shrink-0" />
         <p>Order details are read out of the PDF by a language model and may contain mistakes. Open the filing beside each row and check it before acting on it. Educational research, not investment advice.</p>
       </div>
-      <Segmented value={tab} onChange={setTab} options={[{ value: "orders", label: "All orders" }, { value: "companies", label: "Orders against revenue" }]} />
-      <div className="mt-4">{tab === "orders" ? <AllOrders /> : <ByCompany />}</div>
+      <Segmented value={tab} onChange={setTab} options={[{ value: "orderbook", label: "Orderbook view" }, { value: "orders", label: "Order view" }, { value: "companies", label: "Company view" }]} />
+      <div className="mt-4">{tab === "orderbook" ? <OrderbookView /> : tab === "orders" ? <AllOrders /> : <ByCompany />}</div>
     </>
   );
 }
