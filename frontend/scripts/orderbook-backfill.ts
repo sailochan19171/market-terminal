@@ -13,7 +13,7 @@ import { Db } from "../src/server/db";
 import { BSEClient } from "../src/server/bse/client";
 import { NSEClient } from "../src/server/nse/client";
 import { extract as extractText } from "../src/server/docs/extract";
-import { ensureSchema, markSeen, orderBookFromText, presentations, save, type OrderBookRow } from "../src/server/orders/orderBook";
+import { ensureSchema, markSeen, ORDER_BOOK_INDUSTRIES, orderBookFromText, presentations, save, type OrderBookRow } from "../src/server/orders/orderBook";
 import { orderBookFromModel } from "../src/server/orders/orderBookModel";
 import { resolveSymbol } from "../src/server/orders/extract";
 
@@ -28,7 +28,10 @@ async function main() {
   ensureSchema(db);
   const nse = new NSEClient({ rps: 1.5, maxRetries: 2, timeoutS: 60 });
   const bse = new BSEClient({ rps: 1.5, maxRetries: 2, timeoutS: 60 });
-  const todo = presentations(db, { days, limit });
+  // Only the industries that carry an order book, unless "everyone" is asked for: most of the market has
+  // nothing to report and reading its decks is a download spent to learn that again.
+  const industries = process.argv.includes("everyone") ? null : ORDER_BOOK_INDUSTRIES;
+  const todo = presentations(db, { days, limit, industries });
   console.log(`${todo.length} presentation${todo.length === 1 ? "" : "s"} to read (${days} days back, ${db.isRemote ? "hosted" : "local"} database)\n`);
 
   const found: OrderBookRow[] = [];

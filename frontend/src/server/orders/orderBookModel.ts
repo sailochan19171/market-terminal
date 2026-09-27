@@ -44,9 +44,9 @@ export async function orderBookFromModel(text: string, company: string | null): 
     system: [
       "You read Indian investor presentations. The excerpts below are the text around each mention of an order book, taken out of a slide deck, so the words of different labels are mixed together.",
       "Find the company's total order book: the value of work it has won and not yet delivered.",
-      "Report it in crore rupees. A figure written as 1,854.14 Cr is 1854.14; one written in lakh or million must be converted; one written in rupees in full must be divided by ten million.",
+      "Copy the figure exactly as the deck writes it, digits and separators and all, and say which unit the deck states it in - crore, lakh, million, billion, or rupees. Do no arithmetic: the conversion is done here, from what you copied.",
       "Never report revenue, market capitalisation, a single order, a target, or a number from a chart axis. If the excerpts do not clearly state a total order book, say so.",
-      'Return JSON only: {"order_book_cr": number or null, "as_on": "YYYY-MM-DD" or null, "quote": "the words you read it from"}.',
+      'Return JSON only: {"as_written": "the figure exactly as printed, or null", "unit": "crore|lakh|million|billion|rupees|null", "as_on": "YYYY-MM-DD" or null, "quote": "the words you read it from"}.',
     ].join(" "),
     user: `COMPANY: ${company ?? "not named"}\n\nEXCERPTS\n${shown.slice(0, 4_000)}`,
     json: true,
@@ -57,23 +57,35 @@ export async function orderBookFromModel(text: string, company: string | null): 
   });
   if (!reply.text) return null;
 
-  let parsed: { order_book_cr?: unknown; as_on?: unknown; quote?: unknown };
+  let parsed: { as_written?: unknown; unit?: unknown; as_on?: unknown; quote?: unknown };
   try {
     parsed = JSON.parse(reply.text.replace(/^```(?:json)?|```$/g, "").trim());
   } catch {
     return null;
   }
-  const valueCr = typeof parsed.order_book_cr === "number" && Number.isFinite(parsed.order_book_cr) ? parsed.order_book_cr : null;
-  if (valueCr === null || valueCr <= 0 || valueCr > 10_000_000) return null;
+  const written = typeof parsed.as_written === "string" ? parsed.as_written.trim() : "";
+  if (!written) return null;
 
-  // The digits must be in the text it was shown. A model that rounds 1,854.14 to 1,854 still passes, because
-  // the check is on the digits before the decimal point, which is what a reader would recognise.
-  const whole = Math.round(valueCr).toLocaleString("en-IN").replace(/,/g, "");
-  const shownDigits = shown.replace(/,/g, "");
-  if (!shownDigits.includes(whole) && !shownDigits.includes(String(Math.round(valueCr * 100) / 100))) {
-    log.warn(`${company ?? "a company"}: the model reported ${valueCr} cr, which is not in the excerpts it was shown`);
+  // The figure must be in the text the model was shown, as a whole number and not as part of a longer one:
+  // "1,82,180" contains "18,218", and a model that has quietly converted lakh to crore would otherwise pass.
+  const bare = written.replace(/[^\d.]/g, "");
+  if (!bare || !new RegExp(`(?<![\d.])${bare.replace(/\./g, "\.")}(?![\d])`).test(shown.replace(/,/g, ""))) {
+    log.warn(`${company ?? "a company"}: the model reported "${written}", which is not in the excerpts it was shown`);
     return null;
   }
+
+  // The arithmetic is done here, from the unit the deck stated - never by the model.
+  const PER_CRORE: Record<string, number> = { crore: 1, cr: 1, lakh: 0.01, lac: 0.01, million: 0.1, mn: 0.1, billion: 100, bn: 100, rupees: 1e-7, rupee: 1e-7 };
+  const unit = String(parsed.unit ?? "").toLowerCase().replace(/s$/, "").trim();
+  const factor = PER_CRORE[unit];
+  if (!factor) {
+    log.warn(`${company ?? "a company"}: the model did not say what unit "${written}" is in`);
+    return null;
+  }
+  const raw = Number(bare);
+  if (!Number.isFinite(raw) || raw <= 0) return null;
+  const valueCr = raw * factor;
+  if (valueCr <= 0 || valueCr > 10_000_000) return null;
 
   const asOn = typeof parsed.as_on === "string" && /^\d{4}-\d{2}-\d{2}$/.test(parsed.as_on) ? parsed.as_on : readAsOf(shown);
   return { valueCr: Math.round(valueCr * 100) / 100, asOf: asOn, phrase: String(parsed.quote ?? "").slice(0, 130) || shown.slice(0, 130) };
