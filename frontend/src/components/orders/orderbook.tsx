@@ -7,7 +7,7 @@
 // whose next two years look different from its last two. Every number here is one a company put in its own
 // investor presentation, with the quarter it stated it as on, and the deck is one click away.
 import clsx from "clsx";
-import { ExternalLink, FileText, TrendingUp } from "lucide-react";
+import { Download, ExternalLink, FileText, RefreshCw, TrendingUp } from "lucide-react";
 import { useState } from "react";
 import { DataTable } from "@/components/DataTable";
 import { Badge, Card, ErrorNote, Loading, Segmented } from "@/components/ui";
@@ -69,13 +69,34 @@ function GainerCard({ row, rank, window }: { row: BookRow; rank: number; window:
   );
 }
 
+
+/** The rows as they are shown, as a comma-separated file the browser saves. */
+function downloadCsv(rows: BookRow[], window: string) {
+  const head = ["Company", "Symbol", `Order book growth (${window})`, "Order book (cr)", "Revenue (cr)", "Order book / revenue", "As on", "Date stated by the company", "Filed", "Readings", "Deck"];
+  const cell = (v: string | number | null) => {
+    const t = v === null || v === undefined ? "" : String(v);
+    return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+  };
+  const body = rows.map((r) => [
+    r.company ?? "", r.symbol ?? r.scripCd ?? "", growthOf(r, window) ?? "", r.orderBookCr, r.revenueCr ?? "",
+    r.bookToRevenue ?? "", r.asOf, r.asOfStated ? "yes" : "no", r.filedAt, r.history.length, r.pdfUrl ?? "",
+  ].map(cell).join(","));
+  const blob = new Blob([[head.map(cell).join(","), ...body].join("\n")], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `order-books-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export function OrderbookView() {
   const [window, setWindow] = useState("3m");
   const [minBook, setMinBook] = useState("");
   // The table sorts what it is given; the server is asked for the newest readings first.
   const sort = "updated";
   const query = new URLSearchParams({ window, sort, ...(Number(minBook) ? { minBookCr: minBook } : {}) });
-  const { data, error, loading } = useApi<Payload>(`/api/v2/orderbook?${query}`);
+  const { data, error, loading, reload } = useApi<Payload>(`/api/v2/orderbook?${query}`);
 
   if (error) return <ErrorNote message={error} />;
   if (loading && !data) return <Loading />;
@@ -169,6 +190,18 @@ export function OrderbookView() {
               },
             ]}
             searchable
+            toolbar={
+              <>
+                <button type="button" onClick={reload}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-300 px-3 py-1.5 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50 dark:border-emerald-500/40 dark:text-emerald-300 dark:hover:bg-emerald-500/10">
+                  <RefreshCw size={14} className={clsx(loading && "animate-spin")} /> Refresh
+                </button>
+                <button type="button" onClick={() => downloadCsv(rows, window)}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-indigo-300 hover:text-indigo-700 dark:border-slate-700 dark:text-slate-200">
+                  <Download size={14} /> Export
+                </button>
+              </>
+            }
           />
         )}
       </Card>
