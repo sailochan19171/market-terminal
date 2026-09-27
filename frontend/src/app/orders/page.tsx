@@ -173,7 +173,7 @@ function AllOrders() {
                 key: "company", label: "Company", sticky: true, sortValue: (r) => r.company,
                 className: "w-[9.5rem] min-w-[9.5rem] max-w-[9.5rem] sm:w-[15rem] sm:min-w-[15rem] sm:max-w-[15rem]",
                 render: (r) => (
-                  <div className="w-[14rem] truncate">
+                  <div className="w-full truncate">
                     {r.symbol
                       ? <Link href={`/company/${encodeURIComponent(r.symbol)}`} className="font-medium text-indigo-700 hover:underline dark:text-indigo-300">{r.company}</Link>
                       : <span className="font-medium">{r.company}</span>}
@@ -183,7 +183,7 @@ function AllOrders() {
               },
               {
                 key: "customer", label: "Customer", sortValue: (r) => r.customer ?? "", className: "w-[14rem] min-w-[14rem] max-w-[14rem]",
-                render: (r) => <span className="block w-[13rem] truncate" title={r.customer ?? ""}>{r.customer ?? <span className="text-slate-400">Not mentioned</span>}</span>,
+                render: (r) => <span className="block w-full truncate" title={r.customer ?? ""}>{r.customer ?? <span className="text-slate-400">Not mentioned</span>}</span>,
               },
               {
                 key: "orderType", label: "Order Type", sortValue: (r) => r.orderType ?? "", className: "w-[10rem] min-w-[10rem]",
@@ -281,15 +281,17 @@ function ByCompany() {
                 render: (r) => {
                   const key = r.symbol ?? r.company;
                   return (
-                    <div className="flex w-[16rem] items-center gap-1.5">
+                    // The row fills whatever the column is, rather than asserting 16rem inside a cell that is
+                    // narrower than that on a phone - which is what pushed long names over the figures beside them.
+                    <div className="flex w-full min-w-0 items-center gap-1.5">
                       <button type="button" onClick={() => setOpen((o) => ({ ...o, [key]: !o[key] }))}
                         aria-label={open[key] ? `Hide the orders of ${r.company}` : `Show the orders of ${r.company}`}
-                        className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800">
+                        className="shrink-0 rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800">
                         {open[key] ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
                       </button>
                       {r.symbol
-                        ? <Link href={`/company/${encodeURIComponent(r.symbol)}`} className="font-medium text-indigo-700 hover:underline dark:text-indigo-300">{r.company}</Link>
-                        : <span className="font-medium">{r.company}</span>}
+                        ? <Link href={`/company/${encodeURIComponent(r.symbol)}`} title={r.company} className="truncate font-medium text-indigo-700 hover:underline dark:text-indigo-300">{r.company}</Link>
+                        : <span className="truncate font-medium" title={r.company}>{r.company}</span>}
                     </div>
                   );
                 },
