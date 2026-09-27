@@ -57,7 +57,10 @@ jobs:
       # BSE announcements for the last few days. A day the exchange answers with nothing stays open and is
       # tried again on the next run, so a blocked request never loses a day's filings.
       - name: BSE announcements
-        run: npx tsx src/server/cli.ts announcements --years 0.02
+        # A month's window, not a week's. A day already pulled is skipped, so the extra reach costs one cheap
+        # query - but if this workflow is stopped for a fortnight, every missed day is still inside the window
+        # and repairs itself on the first run back. Outside it, the day is gone unless someone asks for it.
+        run: npx tsx src/server/cli.ts announcements --years 0.08
 
       # NSE's own feed. Its API is stricter about where a request comes from, so this may fail on a GitHub
       # runner where it succeeds from a home connection. The run carries on with what BSE gave us - but the
@@ -65,7 +68,7 @@ jobs:
       # behind a green tick for days.
       - name: NSE announcements
         continue-on-error: true
-        run: npx tsx src/server/cli.ts nse-corporate --only announcements
+        run: npx tsx src/server/cli.ts nse-corporate --only announcements --years 0.06
 
       # Every new "Award of Order / Receipt of Order" filing, read out of its PDF into customer, value and period.
       - name: Read new order filings
