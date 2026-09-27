@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS company_order_book (
     scrip_cd     TEXT,
     company      TEXT,
     as_of        TEXT NOT NULL,         -- the date the company stated the book as on (YYYY-MM-DD)
+    as_of_stated INTEGER NOT NULL DEFAULT 1,  -- 0 when the deck gave no date and the filing date stands in
     order_book_cr REAL NOT NULL,        -- in crore rupees
     filed_at     TEXT NOT NULL,         -- when the presentation was filed
     phrase       TEXT,                  -- the sentence it was read from, for a reader to check
@@ -46,6 +47,7 @@ let ready = false;
 export function ensureSchema(db: Db) {
   if (ready) return;
   db.exec(SCHEMA);
+  db.addColumns("company_order_book", { as_of_stated: "INTEGER NOT NULL DEFAULT 1" });
   ready = true;
 }
 
@@ -138,6 +140,12 @@ export interface OrderBookRow {
   id: string; symbol: string | null; scripCd: string | null; company: string | null;
   asOf: string; orderBookCr: number; filedAt: string; phrase: string | null; pdfUrl: string | null;
   readBy: "rules" | "model"; confidence: number | null;
+  /**
+   * Whether the deck itself said what date the book was as on. Engineers India restated its 31 March figure at
+   * an August annual meeting; stamped with the filing date it read as an August book, and the growth between
+   * the two would have been invented. A reading without a stated date is kept, but it is not a point on a line.
+   */
+  asOfStated: boolean;
 }
 
 export function save(db: Db, rows: OrderBookRow[]) {
@@ -146,7 +154,7 @@ export function save(db: Db, rows: OrderBookRow[]) {
   const at = now();
   db.upsert("company_order_book", rows.map((r) => ({
     id: r.id, symbol: r.symbol, scrip_cd: r.scripCd, company: r.company, as_of: r.asOf,
-    order_book_cr: r.orderBookCr, filed_at: r.filedAt, phrase: r.phrase, pdf_url: r.pdfUrl,
+    order_book_cr: r.orderBookCr, filed_at: r.filedAt, phrase: r.phrase, pdf_url: r.pdfUrl, as_of_stated: r.asOfStated ? 1 : 0,
     read_by: r.readBy, confidence: r.confidence, extracted_at: at,
   })));
   log.info(`order book: ${rows.length} reading${rows.length === 1 ? "" : "s"} stored`);

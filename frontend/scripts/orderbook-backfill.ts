@@ -69,11 +69,11 @@ async function main() {
       const asOf = hit.asOf ?? p.filedAt.slice(0, 10);
       found.push({
         id: p.id, symbol: resolveSymbol(db, p.company, p.symbol), scripCd: p.scripCd, company: p.company,
-        asOf, orderBookCr: hit.valueCr, filedAt: p.filedAt.slice(0, 10), phrase: hit.phrase, pdfUrl: p.pdfUrl,
+        asOf, asOfStated: Boolean(hit.asOf), orderBookCr: hit.valueCr, filedAt: p.filedAt.slice(0, 10), phrase: hit.phrase, pdfUrl: p.pdfUrl,
         readBy, confidence: readBy === "model" ? 0.7 : hit.asOf ? 0.8 : 0.6,
       });
       markSeen(db, p.id, "read", `${hit.valueCr} cr as on ${asOf}`);
-      console.log(`${label} INR ${hit.valueCr.toLocaleString("en-IN")} cr as on ${asOf}${readBy === "model" ? " (read by the model)" : ""}`);
+      console.log(`${label} INR ${hit.valueCr.toLocaleString("en-IN")} cr as on ${asOf}${hit.asOf ? "" : " (no date in the deck - the filing date stands in)"}${readBy === "model" ? " (read by the model)" : ""}`);
     } catch (e) {
       markSeen(db, p.id, "failed", (e as Error).message.slice(0, 200));
       console.log(`${label} could not read: ${(e as Error).message.slice(0, 60)}`);

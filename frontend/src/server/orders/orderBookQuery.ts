@@ -30,6 +30,8 @@ export interface OrderBookView {
   growth12m: number | null;
   /** Every reading, oldest first, for the sparkline. */
   history: { asOf: string; valueCr: number }[];
+  /** Whether the newest reading carried a date the company itself stated. */
+  asOfStated: boolean;
   phrase: string | null;
   pdfUrl: string | null;
 }
@@ -68,7 +70,7 @@ function growthOver(history: { asOf: string; valueCr: number }[], months: number
 export function orderBooks(db: Db, f: OrderBookFilters = {}): OrderBookView[] {
   ensureSchema(db);
   const rows = db.all<Row>(
-    `SELECT b.symbol, b.scrip_cd, b.company, b.as_of, b.order_book_cr, b.filed_at, b.phrase, b.pdf_url,
+    `SELECT b.symbol, b.scrip_cd, b.company, b.as_of, b.as_of_stated, b.order_book_cr, b.filed_at, b.phrase, b.pdf_url,
             m.sales_ttm_cr, m.basis
        FROM company_order_book b
        LEFT JOIN company_metrics m ON m.symbol = b.symbol
@@ -85,6 +87,10 @@ export function orderBooks(db: Db, f: OrderBookFilters = {}): OrderBookView[] {
   const out: OrderBookView[] = [];
   for (const readings of byCompany.values()) {
     const history = readings.map((r) => ({ asOf: String(r.as_of), valueCr: Number(r.order_book_cr) }));
+    // Growth is measured only between readings the company dated itself. A deck that restates an old figure at
+    // an annual meeting would otherwise show the whole of that figure as a quarter's growth.
+    const dated = readings.filter((r) => Number(r.as_of_stated ?? 1) === 1)
+      .map((r) => ({ asOf: String(r.as_of), valueCr: Number(r.order_book_cr) }));
     const last = readings[readings.length - 1];
     const book = Number(last.order_book_cr);
     const revenue = num(last.sales_ttm_cr);
@@ -98,10 +104,11 @@ export function orderBooks(db: Db, f: OrderBookFilters = {}): OrderBookView[] {
       revenueCr: revenue,
       revenueBasis: last.basis ? String(last.basis) : null,
       bookToRevenue: revenue && revenue > 0 ? Math.round((book / revenue) * 100) / 100 : null,
-      growth3m: growthOver(history, 3),
-      growth6m: growthOver(history, 6),
-      growth12m: growthOver(history, 12),
+      growth3m: growthOver(dated, 3),
+      growth6m: growthOver(dated, 6),
+      growth12m: growthOver(dated, 12),
       history,
+      asOfStated: Number(last.as_of_stated ?? 1) === 1,
       phrase: last.phrase ? String(last.phrase) : null,
       pdfUrl: last.pdf_url ? String(last.pdf_url) : null,
     });

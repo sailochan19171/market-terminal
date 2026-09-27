@@ -19,7 +19,7 @@ interface BookRow {
   symbol: string | null; company: string | null; scripCd: string | null;
   orderBookCr: number; asOf: string; filedAt: string;
   revenueCr: number | null; revenueBasis: string | null; bookToRevenue: number | null;
-  growth3m: number | null; growth6m: number | null; growth12m: number | null;
+  growth3m: number | null; growth6m: number | null; growth12m: number | null; asOfStated: boolean;
   history: { asOf: string; valueCr: number }[];
   phrase: string | null; pdfUrl: string | null;
 }
@@ -147,7 +147,14 @@ export function OrderbookView() {
                   ? <span className="text-xs text-slate-400">—</span>
                   : <span className="tabular-nums" title={`${r.bookToRevenue.toFixed(2)} years of sales on the books`}>{r.bookToRevenue.toFixed(2)}x</span>,
               },
-              { key: "asOf", label: "As on", align: "right", className: "w-[8rem]", sortValue: (r) => r.asOf, render: (r) => <span className="tabular-nums text-sm">{day(r.asOf)}</span> },
+              {
+                key: "asOf", label: "As on", align: "right", className: "w-[8rem]", sortValue: (r) => r.asOf,
+                // A date the deck did not give is the filing date standing in, and is said to be so rather than
+                // shown as if the company had stated it.
+                render: (r) => r.asOfStated
+                  ? <span className="tabular-nums text-sm">{day(r.asOf)}</span>
+                  : <span className="tabular-nums text-sm text-slate-400" title="the deck gave no date; this is when it was filed">{day(r.asOf)}*</span>,
+              },
               { key: "filedAt", label: "Filed", align: "right", className: "w-[8rem]", sortValue: (r) => r.filedAt, render: (r) => <span className="tabular-nums text-sm text-slate-500">{day(r.filedAt)}</span> },
               {
                 key: "history", label: "Order book history", sortable: false, className: "w-[9rem]",
@@ -166,7 +173,8 @@ export function OrderbookView() {
       </Card>
       <p className="px-4 pb-4 pt-2 text-xs text-slate-500 sm:px-5">
         Order books are read out of companies&rsquo; own investor presentations, and are stated as on the quarter the
-        company gave, not the day the deck was filed. Growth compares the newest reading with the newest one at
+        company gave, not the day the deck was filed. A date marked * is the day the deck was filed, because the
+        deck gave none; those readings are left out of the growth figures rather than dated by guesswork. Growth compares the newest reading with the newest one at
         least that far back; where there is no earlier reading, no growth is shown rather than a zero.
       </p>
     </>
