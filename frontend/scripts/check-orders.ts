@@ -5,6 +5,7 @@ import { Db } from "../src/server/db";
 import { amountsInCrore, isRealCustomer, parseByRules, parseWithModel } from "../src/server/orders/extract";
 import { annualValue, companyOrders, filterOptions, listOrders } from "../src/server/orders/query";
 import { reconcile, rupeesFromWords, wordsNear } from "../src/server/orders/amountWords";
+import { orderBookFromText } from "../src/server/orders/orderBook";
 import { ensureSchema, save } from "../src/server/orders/store";
 
 let failed = 0;
@@ -164,6 +165,23 @@ async function main() {
     eq("digits and words that agree are left alone", reconcile(217.56, 217.56), { value: 217.56, corrected: false });
     eq("a rounded spelling does not overrule a precise figure", reconcile(12.34, 12.34).corrected, false);
     eq("no spelling at all leaves the digits standing", reconcile(45.5, null), { value: 45.5, corrected: false });
+  }
+
+  console.log("");
+  console.log("The order book is read off a slide, or not at all");
+  {
+    const ob = (t: string) => orderBookFromText(t);
+    eq("a deck that states it plainly", ob("Order Book: Rs. 1,854.14 Cr as on 30th June, 2026")?.valueCr, 1854.14);
+    eq("and the quarter it stated it as on", ob("Order Book: Rs. 1,854.14 Cr as on 30th June, 2026")?.asOf, "2026-06-30");
+    eq("a date between the label and the figure is read past", ob("Our order book position as on 31.03.2026 is Rs 5,143.3 crores")?.valueCr, 5143.3);
+    eq("an Indian quarter", ob("Outstanding order book of Rs 12,115 Cr (Q1 FY27)")?.asOf, "2026-06-30");
+    // Both of these are real: the first from Ashoka Buildcon's deck, where the rules read the day of the month
+    // as the order book, the second from Om Infra's, where they read the year. A number the deck did not mark
+    // as money is not an order book, however close it sits to the words.
+    eq("a day of the month is not an order book", ob("Current Order Book as experience in Ashoka Family st on 31 March 2026 construction ACUITE 16,000 LANE Kms"), null);
+    eq("nor is a year", ob("Order Book Execution (as of June, 26) 5 COMPANY OVERVIEW"), null);
+    eq("nor is a bare number beside the words", ob("Order book 1945.5"), null);
+    eq("revenue is not an order book", ob("Revenue of Rs 245.03 Cr for FY2026"), null);
   }
 
   console.log(failed ? `\n${failed} check${failed === 1 ? "" : "s"} failed` : "\nAll checks passed");
