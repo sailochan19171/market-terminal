@@ -142,10 +142,25 @@ export function announcementRows(raw: Obj[], ts: string): Row[] {
 }
 
 export async function syncAnnouncements(client: ApiClient, db: Db, start?: MaybeDate, end?: MaybeDate): Promise<number> {
-  const raw = await fetchWindowed(client, ANNOUNCEMENTS, { index: "equities" }, start, end);
-  const n = db.upsert("nse_announcement", announcementRows(raw, now()));
-  log.info(`nse announcements -> ${n}`);
-  return n;
+  // Two boards, two calls. The Emerge platform is a separate index at NSE, and asking only for "equities" left
+  // every SME company out of the site entirely - an order win filed by Mason Infratech or Happy Square never
+  // arrived, and the company did not exist as far as anything downstream was concerned. Their symbols were
+  // already being collected; only the filings were missing.
+  const ts = now();
+  let total = 0;
+  for (const index of ["equities", "sme"]) {
+    try {
+      const raw = await fetchWindowed(client, ANNOUNCEMENTS, { index }, start, end);
+      const n = db.upsert("nse_announcement", announcementRows(raw, ts));
+      log.info(`nse announcements (${index}) -> ${n}`);
+      total += n;
+    } catch (e) {
+      // One board failing must not cost the other: the main board carries the weight of the market.
+      log.warn(`nse announcements (${index}) failed: ${(e as Error).message.slice(0, 120)}`);
+      if (index === "equities") throw e;
+    }
+  }
+  return total;
 }
 
 // --- corporate actions --------------------------------------------------------------
