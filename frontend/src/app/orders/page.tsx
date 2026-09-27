@@ -170,7 +170,8 @@ function AllOrders() {
             initialSort={{ key: "announcedAt", dir: "desc" }}
             columns={[
               {
-                key: "company", label: "Company", sticky: true, sortValue: (r) => r.company, className: "w-[15rem] min-w-[15rem] max-w-[15rem]",
+                key: "company", label: "Company", sticky: true, sortValue: (r) => r.company,
+                className: "w-[9.5rem] min-w-[9.5rem] max-w-[9.5rem] sm:w-[15rem] sm:min-w-[15rem] sm:max-w-[15rem]",
                 render: (r) => (
                   <div className="w-[14rem] truncate">
                     {r.symbol
@@ -254,7 +255,7 @@ function ByCompany() {
         <DateBox label="From" value={from} onChange={(v) => { if (v) { setFrom(v); if (v > to) setTo(v); } }} max={isoDay()} />
         <DateBox label="To" value={to} onChange={(v) => { if (v) { setTo(v); if (v < from) setFrom(v); } }} max={isoDay()} min={from} />
         <NumberBox label="Min revenue %" value={minRevenuePct} onChange={setMinRevenuePct} suffix="%" />
-        <CapSlider min={cap[0]} max={cap[1]} onChange={(lo, hi) => setCap([lo, hi])} />
+        <CapSlider min={cap[0]} max={cap[1]} onChange={(lo, hi) => setCap([lo, hi])} className="col-span-2 md:col-span-1" />
       </div>
       <div className="flex gap-2.5 px-4 pt-2.5 sm:px-5">
         <div className="relative min-w-0 flex-1">
@@ -275,7 +276,8 @@ function ByCompany() {
             initialSort={{ key: "ordersPctOfRevenue", dir: "desc" }}
             columns={[
               {
-                key: "company", label: "Company Name", sticky: true, sortValue: (r) => r.company, className: "w-[17rem] min-w-[17rem] max-w-[17rem]",
+                key: "company", label: "Company Name", sticky: true, sortValue: (r) => r.company,
+                className: "w-[10.5rem] min-w-[10.5rem] max-w-[10.5rem] sm:w-[17rem] sm:min-w-[17rem] sm:max-w-[17rem]",
                 render: (r) => {
                   const key = r.symbol ?? r.company;
                   return (

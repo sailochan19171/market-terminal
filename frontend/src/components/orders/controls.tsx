@@ -101,7 +101,7 @@ export function NumberBox({ label, value, onChange, suffix, placeholder, classNa
 export const CAP_STOPS = [0, 100, 500, 2_000, 10_000, 100_000, Number.POSITIVE_INFINITY];
 export const CAP_LABELS = ["0", "100", "500", "2k", "10k", "1L", "Max"];
 
-export function CapSlider({ min, max, onChange }: { min: number; max: number; onChange: (min: number, max: number) => void }) {
+export function CapSlider({ min, max, onChange, className }: { min: number; max: number; onChange: (min: number, max: number) => void; className?: string }) {
   const lo = Math.max(0, CAP_STOPS.indexOf(min));
   const hi = CAP_STOPS.findIndex((v) => v === max) === -1 ? CAP_STOPS.length - 1 : CAP_STOPS.findIndex((v) => v === max);
   const set = (which: "lo" | "hi", i: number) => {
@@ -111,7 +111,7 @@ export function CapSlider({ min, max, onChange }: { min: number; max: number; on
   };
   const label = (i: number) => (i === CAP_STOPS.length - 1 ? "Max" : `₹${CAP_LABELS[i]} Cr`);
   return (
-    <div className={clsx(FIELD, "flex flex-col justify-center")}>
+    <div className={clsx(FIELD, "flex flex-col justify-center", className)}>
       <p className="truncate text-[10.5px] font-semibold uppercase tracking-wide text-slate-400">
         Market cap: {lo === 0 && hi === CAP_STOPS.length - 1 ? "any size" : `${label(lo)} to ${label(hi)}`}
       </p>
@@ -121,7 +121,11 @@ export function CapSlider({ min, max, onChange }: { min: number; max: number; on
         <input type="range" min={0} max={CAP_STOPS.length - 1} step={1} value={hi} onChange={(e) => set("hi", Number(e.target.value))}
           aria-label="Largest market cap" className="h-1 w-full accent-emerald-500" />
       </div>
-      <div className="flex justify-between text-[10px] text-slate-400">{CAP_LABELS.map((l) => <span key={l}>{l}</span>)}</div>
+      <div className="flex justify-between text-[10px] text-slate-400">
+        {CAP_LABELS.map((l, i) => (
+          <span key={l} className={clsx(i % 2 === 1 && "hidden min-[420px]:inline")}>{l}</span>
+        ))}
+      </div>
     </div>
   );
 }

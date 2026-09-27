@@ -118,7 +118,8 @@ export function OrderbookView() {
             initialSort={{ key: "filedAt", dir: "desc" }}
             columns={[
               {
-                key: "company", label: "Company", sticky: true, sortValue: (r) => r.company ?? "", className: "w-[16rem] min-w-[16rem] max-w-[16rem]",
+                key: "company", label: "Company", sticky: true, sortValue: (r) => r.company ?? "",
+                className: "w-[9.5rem] min-w-[9.5rem] max-w-[9.5rem] sm:w-[16rem] sm:min-w-[16rem] sm:max-w-[16rem]",
                 render: (r) => (
                   <div className="min-w-0">
                     <p className="truncate font-medium" title={r.company ?? undefined}>{r.company ?? r.symbol}</p>

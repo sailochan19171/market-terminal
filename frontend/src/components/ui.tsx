@@ -143,9 +143,12 @@ export function ErrorNote({ message, onRetry }: { message: string; onRetry?: () 
 
 export function Stat({ label, value, hint, className }: { label: string; value: ReactNode; hint?: ReactNode; className?: string }) {
   return (
-    <div className={clsx("flex items-baseline justify-between gap-3 border-b border-slate-100 py-2.5 last:border-0 dark:border-slate-800", className)}>
+    // Label and figure sit on one line while there is room for both. On a phone a long hint - "adding only
+    // orders whose value the filing states" - pushed the figure off its own row and the two ran together, so
+    // below that width the figure and its hint drop under the label instead.
+    <div className={clsx("border-b border-slate-100 py-2.5 last:border-0 dark:border-slate-800 sm:flex sm:items-baseline sm:justify-between sm:gap-3", className)}>
       <dt className="text-sm text-slate-500 dark:text-slate-400">{label}</dt>
-      <dd className="tabular text-right text-sm font-semibold text-slate-900 dark:text-white">
+      <dd className="tabular text-sm font-semibold text-slate-900 sm:text-right dark:text-white">
         {value}
         {hint && <span className="ml-1 text-xs font-normal text-slate-400">{hint}</span>}
       </dd>
