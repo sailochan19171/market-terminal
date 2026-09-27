@@ -28,7 +28,7 @@ concurrency:
 jobs:
   pull:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 75
     defaults:
       run:
         working-directory: frontend
@@ -54,25 +54,33 @@ jobs:
       # this lock file was written with, and a dependency mismatch should not stop the day's data.
       - run: npm install --no-audit --no-fund
 
-      # BSE announcements for the last few days. A day the exchange answers with nothing stays open and is
-      # tried again on the next run, so a blocked request never loses a day's filings.
-      - name: BSE announcements
-        # A month's window, not a week's. A day already pulled is skipped, so the extra reach costs one cheap
-        # query - but if this workflow is stopped for a fortnight, every missed day is still inside the window
-        # and repairs itself on the first run back. Outside it, the day is gone unless someone asks for it.
-        run: npx tsx src/server/cli.ts announcements --years 0.08
-
-      # NSE's own feed. Its API is stricter about where a request comes from, so this may fail on a GitHub
-      # runner where it succeeds from a home connection. The run carries on with what BSE gave us - but the
-      # status step at the end fails the run if NSE has actually fallen behind, so a blocked feed cannot sit
-      # behind a green tick for days.
-      - name: NSE announcements
-        continue-on-error: true
-        run: npx tsx src/server/cli.ts nse-corporate --only announcements --years 0.06
-
-      # Every new "Award of Order / Receipt of Order" filing, read out of its PDF into customer, value and period.
-      - name: Read new order filings
-        run: npx tsx scripts/orders-backfill.ts 7 60
+      # Announcements and the orders inside them, several times over inside one run.
+      #
+      # The schedule above asks for every fifteen minutes and GitHub does not deliver it: a free account's
+      # scheduled runs are queued behind everything else and quietly dropped under load, and this job has been
+      # arriving every three to five hours. Nothing can make the scheduler punctual - but a run that lasts an
+      # hour and sweeps six times covers most of that gap itself, and a public repository's minutes are free.
+      #
+      # Each sweep: BSE's filings for the last month (a day already pulled is skipped, so the reach is cheap
+      # and a fortnight's outage still repairs itself), NSE's for both boards, then the order wins read out of
+      # whatever arrived. NSE is allowed to fail - its API refuses a datacentre more often than BSE's - and the
+      # status step at the end still fails the run if a dataset has actually fallen behind.
+      - name: Announcements and orders, swept every ten minutes for an hour
+        run: |
+          for pass in 1 2 3 4 5 6; do
+            echo "::group::sweep $pass"
+            started=$(date +%s)
+            npx tsx src/server/cli.ts announcements --years 0.08 || echo "BSE announcements failed on sweep $pass"
+            npx tsx src/server/cli.ts nse-corporate --only announcements --years 0.06 || echo "NSE announcements failed on sweep $pass"
+            npx tsx scripts/orders-backfill.ts 7 40 || echo "order reading failed on sweep $pass"
+            echo "::endgroup::"
+            if [ "$pass" -lt 6 ]; then
+              # Ten minutes from the start of the sweep, not from its end, so a slow sweep does not push the
+              # next one out; a sweep that overran simply starts the next at once.
+              wait_for=$(( 600 - ($(date +%s) - started) ))
+              [ "$wait_for" -gt 0 ] && sleep "$wait_for"
+            fi
+          done
 
       # The order book each company reports to its investors, off the quarterly presentation. Presentations
       # arrive in bursts after each quarter, and a deck is downloaded once and remembered whatever it said, so
