@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS company_order_seen (
     id         TEXT PRIMARY KEY,
     status     TEXT NOT NULL,            -- extracted | not_an_order | unreadable | failed
     detail     TEXT,
+    tries      INTEGER NOT NULL DEFAULT 1,
     seen_at    TEXT NOT NULL
 );
 `;
@@ -53,6 +54,8 @@ let ready = false;
 export function ensureSchema(db: Db) {
   if (ready) return;
   db.exec(SCHEMA);
+  // Added after the table was already in use: without it, every filing that had failed once stayed failed.
+  db.addColumns("company_order_seen", { tries: "INTEGER NOT NULL DEFAULT 1" });
   ready = true;
 }
 
@@ -85,9 +88,16 @@ export function save(db: Db, o: OrderRow) {
 
 export function markSeen(db: Db, id: string, status: string, detail?: string | null) {
   ensureSchema(db);
-  db.run("INSERT INTO company_order_seen (id, status, detail, seen_at) VALUES (?,?,?,?) ON CONFLICT(id) DO UPDATE SET status = excluded.status, detail = excluded.detail, seen_at = excluded.seen_at",
+  // Each attempt is counted, so a filing that keeps failing is eventually left alone instead of being fetched
+  // for ever, while one that failed once is tried again.
+  db.run("INSERT INTO company_order_seen (id, status, detail, tries, seen_at) VALUES (?,?,?,1,?) ON CONFLICT(id) DO UPDATE SET status = excluded.status, detail = excluded.detail, tries = company_order_seen.tries + 1, seen_at = excluded.seen_at",
     [id, status, detail ?? null, now()]);
 }
+
+/** How many times a filing that failed is fetched again before it is given up on. */
+const RETRIES = 4;
+/** How long to wait before trying a failed filing again, so a slow exchange is not hammered. */
+const RETRY_AFTER_HOURS = 3;
 
 export function seenIds(db: Db, ids: string[]): Set<string> {
   if (!ids.length) return new Set();
@@ -95,7 +105,13 @@ export function seenIds(db: Db, ids: string[]): Set<string> {
   const found = new Set<string>();
   for (let i = 0; i < ids.length; i += 400) {
     const batch = ids.slice(i, i + 400);
-    const rows = db.all<Row>(`SELECT id FROM company_order_seen WHERE id IN (${batch.map(() => "?").join(",")})`, batch);
+    // A filing that failed on a timeout is not done with - it is one NSE was slow about, and dropping it loses
+    // the order for good. Those come back after a few hours, up to a few attempts; a scan with no text in it,
+    // or a filing already read, stays read.
+    const rows = db.all<Row>(
+      `SELECT id FROM company_order_seen
+        WHERE id IN (${batch.map(() => "?").join(",")})
+          AND NOT (status = 'failed' AND tries < ${RETRIES} AND seen_at < datetime('now', '-${RETRY_AFTER_HOURS} hours'))`, batch);
     for (const r of rows) found.add(String(r.id));
   }
   return found;
