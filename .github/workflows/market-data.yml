@@ -71,6 +71,13 @@ jobs:
       - name: Read new order filings
         run: npx tsx scripts/orders-backfill.ts 7 60
 
+      # The order book each company reports to its investors, off the quarterly presentation. Presentations
+      # arrive in bursts after each quarter, and a deck is downloaded once and remembered whatever it said, so
+      # most runs have nothing to do; a run costs a handful of model calls at most.
+      - name: Order books from investor presentations
+        continue-on-error: true
+        run: npx tsx scripts/orderbook-backfill.ts 400 15
+
       # The day's prices. Both exchanges publish one file after the close (about 18:00 IST), so there is nothing
       # new to fetch during the session; a run that finds the file already stored does nothing. Every dataset
       # below used to come only from the PC at home, which is why prices stopped the moment it stopped.
