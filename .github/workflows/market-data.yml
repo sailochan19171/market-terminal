@@ -87,7 +87,11 @@ jobs:
       # most runs have nothing to do; a run costs a handful of model calls at most.
       - name: Order books from investor presentations
         continue-on-error: true
-        run: npx tsx scripts/orderbook-backfill.ts 400 15
+        # Sixty decks a run, not fifteen. There are some eight hundred presentations still to read in the
+        # industries that carry an order book, and at fifteen a run - a few minutes of a seventy-five minute
+        # allowance - the table would take a fortnight to fill. A deck already read is never fetched again, so
+        # once the backlog is gone these runs go back to doing almost nothing.
+        run: npx tsx scripts/orderbook-backfill.ts 400 60
 
       # The day's prices. Both exchanges publish one file after the close (about 18:00 IST), so there is nothing
       # new to fetch during the session; a run that finds the file already stored does nothing. Every dataset
