@@ -14,6 +14,7 @@ import { extract as extractText } from "../docs/extract";
 import { config } from "../config";
 import { settings } from "../agents/config";
 import { chat } from "../research/llm";
+import { textFromScan } from "./scan";
 import { reconcile, wordsNear } from "./amountWords";
 import { available as llmAvailable } from "../research/llm";
 import { markSeen, save, seenIds, type OrderRow } from "./store";
@@ -323,6 +324,10 @@ export const isRealCustomer = (name: string | null): boolean => {
 
 /** Filings under this category that are really something else (a court order, a penalty). */
 const NOT_AN_ORDER = /\b(court|tribunal|nclt|adjudicat|penalty order|demand order|assessment order|show cause|gst order|income tax)\b/i;
+/** An order of some other kind: what a refusal has to point at to be believed. */
+const ANOTHER_KIND_OF_ORDER = /\b(income tax|gst|customs|excise|adjudicat|order[- ]in[- ]original|show cause|penalty|demand notice|assessment order|court|tribunal|nclt|nclat|sebi order|litigation|arbitrat|recovery)\b/i;
+/** What a filing says when a company has won work. */
+const ORDER_WIN_WORDS = /\b(work order|purchase order|letter of award|letter of intent|loa\b|bagged|has been awarded|secured an order|receipt of order for|order for supply)\b/i;
 
 export interface Parsed {
   customer: string | null; orderType: string | null; contractValueCr: number | null; currency: string | null;
@@ -443,7 +448,14 @@ export async function parseWithModel(text: string, rules: Parsed, opts: { model?
   const duration = num(draft.duration_months) ?? rules.durationMonths;
   const fromModel = grounded(str(draft.customer, 90));
   const customer = (isRealCustomer(fromModel) ? fromModel : null) ?? rules.customer;
-  const isOrder = draft.is_order === false ? false : rules.isOrder;
+  // The model may refuse a filing - a tax demand, a court order, a clarification - but not against the document.
+  // K.P. Energy's filing says it received a work order and says nothing about a tax or a court, and it was
+  // refused anyway; a refusal like that loses a company's order with nothing to show for it. So a refusal now
+  // stands only where the document supports it: either it names another kind of order, or it does not use the
+  // words of an order win.
+  const head = text.slice(0, 4_000);
+  const refusalSupported = ANOTHER_KIND_OF_ORDER.test(head) || !ORDER_WIN_WORDS.test(head);
+  const isOrder = draft.is_order === false && refusalSupported ? false : rules.isOrder;
   const missing = [!value && "contract value", !duration && "duration", !customer && "customer"].filter(Boolean);
 
   return {
@@ -472,8 +484,16 @@ export async function readOne(db: Db, c: Candidate, opts: { useModel?: boolean }
     const doc = await extractText(bytes, c.pdfUrl);
     text = doc.pages.join("\n").replace(/ /g, " ").replace(/[ \t]+/g, " ");
     if (doc.imageOnly || text.replace(/\s/g, "").length < 200) {
-      markSeen(db, c.id, "unreadable", doc.imageOnly ? "the filing is a scan with no text" : "the filing has almost no text");
-      return null;
+      // A scan carries pictures of words, so every text extractor returns nothing and the order inside it used
+      // to be lost. A model that reads the page itself needs no text layer; what it writes out then goes
+      // through the same extraction as every other filing, so one code path still decides what an order is.
+      const read = opts.useModel === false ? null : await textFromScan(bytes, c.company);
+      if (!read) {
+        markSeen(db, c.id, "unreadable", doc.imageOnly ? "the filing is a scan and could not be read from the page either" : "the filing has almost no text");
+        return null;
+      }
+      log.info(`${c.company ?? c.id}: read from the page itself, the filing being a scan`);
+      text = read.text;
     }
   } catch (e) {
     markSeen(db, c.id, "failed", (e as Error).message.slice(0, 200));

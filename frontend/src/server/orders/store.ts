@@ -94,10 +94,17 @@ export function markSeen(db: Db, id: string, status: string, detail?: string | n
     [id, status, detail ?? null, now()]);
 }
 
-/** How many times a filing that failed is fetched again before it is given up on. */
+/** How many times a filing that failed is fetched again quickly before it is left for the slow pass. */
 const RETRIES = 4;
 /** How long to wait before trying a failed filing again, so a slow exchange is not hammered. */
 const RETRY_AFTER_HOURS = 3;
+/**
+ * A filing that has failed its four quick attempts is not given up on - it is tried once a fortnight instead.
+ * An exchange's archive goes down for a week, a link is wrong until someone re-files it, a PDF is served
+ * truncated for a day: none of those are permanent, and a document abandoned for good is a company's order
+ * missing from the site for ever. The long pass costs one fetch a fortnight per stuck filing.
+ */
+const SLOW_RETRY_AFTER_DAYS = 14;
 
 export function seenIds(db: Db, ids: string[]): Set<string> {
   if (!ids.length) return new Set();
@@ -111,7 +118,12 @@ export function seenIds(db: Db, ids: string[]): Set<string> {
     const rows = db.all<Row>(
       `SELECT id FROM company_order_seen
         WHERE id IN (${batch.map(() => "?").join(",")})
-          AND NOT (status = 'failed' AND tries < ${RETRIES} AND seen_at < datetime('now', '-${RETRY_AFTER_HOURS} hours'))`, batch);
+          AND NOT (
+            status = 'failed' AND (
+              (tries < ${RETRIES} AND seen_at < datetime('now', '-${RETRY_AFTER_HOURS} hours'))
+              OR seen_at < datetime('now', '-${SLOW_RETRY_AFTER_DAYS} days')
+            )
+          )`, batch);
     for (const r of rows) found.add(String(r.id));
   }
   return found;

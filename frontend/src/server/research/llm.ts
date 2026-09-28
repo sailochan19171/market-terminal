@@ -106,6 +106,12 @@ export interface ChatOptions {
   maxTokens?: number;
   /** A different model from the configured default - the agents use a small one for simple jobs. */
   model?: string;
+  /**
+   * A document to read alongside the prompt, as bytes. Meant for the filings that arrive as scans with no text
+   * in them: a model that reads the page itself gets what no text extractor can. Only Gemini takes these, so a
+   * call that needs one has to be sent to a host that supports it.
+   */
+  document?: { bytes: Uint8Array; mediaType: string };
   timeoutMs?: number;
   /** Retries on rate limits, server errors and dropped connections, with exponential backoff. */
   maxRetries?: number;
@@ -131,7 +137,16 @@ export async function chat(opts: ChatOptions): Promise<Completion> {
       ? { model, max_tokens: maxTokens, temperature: opts.temperature ?? 0.2, system: SYSTEM, messages: [{ role: "user", content: prompt }] }
       : kind === "gemini"
         ? {
-          systemInstruction: { parts: [{ text: SYSTEM }] }, contents: [{ role: "user", parts: [{ text: prompt }] }],
+          systemInstruction: { parts: [{ text: SYSTEM }] },
+          contents: [{
+            role: "user",
+            parts: [
+              ...(opts.document
+                ? [{ inlineData: { mimeType: opts.document.mediaType, data: Buffer.from(opts.document.bytes).toString("base64") } }]
+                : []),
+              { text: prompt },
+            ],
+          }],
           generationConfig: { maxOutputTokens: maxTokens, temperature: opts.temperature ?? 0.2, ...(opts.json ? { responseMimeType: "application/json" } : {}) },
         }
         : {
