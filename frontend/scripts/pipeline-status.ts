@@ -102,6 +102,13 @@ function main() {
 
   console.log(`  orders with a value   : ${n("SELECT COUNT(*) FROM company_order WHERE contract_value_cr IS NOT NULL")}`);
   console.log(`  orders with a customer: ${n("SELECT COUNT(*) FROM company_order WHERE customer IS NOT NULL")}`);
+  // Filings a reader could not open, and filings waiting to be tried again. Neither is a silent loss any more,
+  // but both are worth seeing: a scan with no text in it needs a person, and a queue that never empties means
+  // the retry is not working.
+  try {
+    console.log(`  order filings waiting to be tried again: ${n("SELECT COUNT(*) FROM company_order_seen WHERE status = 'failed' AND tries < 4")}`);
+    console.log(`  order filings that are scans with no text: ${n("SELECT COUNT(*) FROM company_order_seen WHERE status = 'unreadable'")}`);
+  } catch { /* an older database without the column */ }
   console.log(`  order filings still unread: ${n(`SELECT COUNT(*) FROM announcement a WHERE a.subcategory = 'Award of Order / Receipt of Order' AND a.news_dt >= date('now','-7 days') AND NOT EXISTS (SELECT 1 FROM company_order_seen s WHERE s.id = 'BSE:' || a.news_id)`)}`);
   db.close();
 
