@@ -136,6 +136,27 @@ function fromWords(flat: string): { valueCr: number; asOf: string | null; phrase
   return { valueCr: Math.round((rupees / 1e7) * 100) / 100, asOf: readAsOf(flat.slice(0, 400)), phrase: words[0].slice(0, 130) };
 }
 
+
+/**
+ * The quarter a deck is reporting on, when the deck itself never says.
+ *
+ * A results presentation is filed within a few weeks of the quarter it covers - the quarter ends on 30 June and
+ * the deck appears in late July - so the quarter end just before it is what the figure is as on. Beyond about
+ * ten weeks that reasoning fails: Engineers India restated its March order book at an August annual meeting, and
+ * calling that a June figure would be inventing a quarter's growth. Those keep the filing date and stay out of
+ * the growth figures.
+ */
+export function quarterBefore(filedAt: string, withinDays = 70): string | null {
+  const filed = new Date(`${filedAt.slice(0, 10)}T00:00:00Z`);
+  if (Number.isNaN(filed.getTime())) return null;
+  const year = filed.getUTCFullYear();
+  const ends = [`${year - 1}-12-31`, `${year}-03-31`, `${year}-06-30`, `${year}-09-30`, `${year}-12-31`];
+  const before = ends.filter((e) => e < filedAt.slice(0, 10)).pop();
+  if (!before) return null;
+  const days = (filed.getTime() - Date.parse(`${before}T00:00:00Z`)) / 86_400_000;
+  return days <= withinDays ? before : null;
+}
+
 export interface OrderBookRow {
   id: string; symbol: string | null; scripCd: string | null; company: string | null;
   asOf: string; orderBookCr: number; filedAt: string; phrase: string | null; pdfUrl: string | null;
