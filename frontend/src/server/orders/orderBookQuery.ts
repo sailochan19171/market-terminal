@@ -86,11 +86,20 @@ export function orderBooks(db: Db, f: OrderBookFilters = {}): OrderBookView[] {
 
   const out: OrderBookView[] = [];
   for (const readings of byCompany.values()) {
-    const history = readings.map((r) => ({ asOf: String(r.as_of), valueCr: Number(r.order_book_cr) }));
+    // One point per quarter. A company files the same deck with both exchanges, and files it again when it
+    // presents to analysts, so the same figure arrives two or three times; plotted as it comes, the line has
+    // three bars of identical height for one quarter and reads as a flat stretch that never happened.
+    const perQuarter = new Map<string, { asOf: string; valueCr: number }>();
+    for (const r of readings) perQuarter.set(String(r.as_of), { asOf: String(r.as_of), valueCr: Number(r.order_book_cr) });
+    const history = [...perQuarter.values()].sort((a, b) => a.asOf.localeCompare(b.asOf));
     // Growth is measured only between readings the company dated itself. A deck that restates an old figure at
     // an annual meeting would otherwise show the whole of that figure as a quarter's growth.
-    const dated = readings.filter((r) => Number(r.as_of_stated ?? 1) === 1)
-      .map((r) => ({ asOf: String(r.as_of), valueCr: Number(r.order_book_cr) }));
+    const datedPerQuarter = new Map<string, { asOf: string; valueCr: number }>();
+    for (const r of readings) {
+      if (Number(r.as_of_stated ?? 1) !== 1) continue;
+      datedPerQuarter.set(String(r.as_of), { asOf: String(r.as_of), valueCr: Number(r.order_book_cr) });
+    }
+    const dated = [...datedPerQuarter.values()].sort((a, b) => a.asOf.localeCompare(b.asOf));
     const last = readings[readings.length - 1];
     const book = Number(last.order_book_cr);
     const revenue = num(last.sales_ttm_cr);
