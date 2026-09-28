@@ -130,12 +130,19 @@ export function seenIds(db: Db, ids: string[]): Set<string> {
 }
 
 /** How much of the work is done: extracted rows, and what is still waiting to be read. */
-export function coverage(db: Db): { orders: number; notOrders: number; unreadable: number; lastExtractedAt: string | null } {
+/**
+ * How much of the work is done. "Unreadable" counted the filings waiting to be fetched again as well as the
+ * ones nobody can read, which made a queue that empties itself look like a pile of lost documents - it had me
+ * chasing a regression that was not there. They are counted apart now.
+ */
+export function coverage(db: Db): { orders: number; notOrders: number; retrying: number; unreadable: number; lastExtractedAt: string | null } {
   ensureSchema(db);
+  const seen = (status: string) => Number(db.scalar<number>("SELECT COUNT(*) FROM company_order_seen WHERE status = ?", [status]) ?? 0);
   return {
     orders: Number(db.scalar<number>("SELECT COUNT(*) FROM company_order WHERE is_order = 1") ?? 0),
-    notOrders: Number(db.scalar<number>("SELECT COUNT(*) FROM company_order_seen WHERE status = 'not_an_order'") ?? 0),
-    unreadable: Number(db.scalar<number>("SELECT COUNT(*) FROM company_order_seen WHERE status IN ('unreadable','failed')") ?? 0),
+    notOrders: seen("not_an_order"),
+    retrying: seen("failed"),
+    unreadable: seen("unreadable"),
     lastExtractedAt: db.scalar<string>("SELECT MAX(extracted_at) FROM company_order") ?? null,
   };
 }
