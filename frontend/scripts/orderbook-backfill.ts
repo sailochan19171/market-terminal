@@ -23,6 +23,22 @@ const limit = Number(process.argv[3] ?? 40);
 // nothing against the day's token allowance.
 const useModel = !process.argv.includes("rules");
 
+
+/**
+ * Whether a reading is out of all proportion to the company's sales. An order book is work in hand: for a
+ * builder or an equipment maker it runs from a fraction of a year's revenue to several years of it. A hundredth
+ * of a year, or fifty years, is the reader having picked up the wrong number off the slide.
+ *
+ * A company with no revenue on file cannot be judged this way, and is left alone.
+ */
+function implausible(db: Db, symbol: string | null, valueCr: number): boolean {
+  if (!symbol) return false;
+  const revenue = db.scalar<number>("SELECT sales_ttm_cr FROM company_metrics WHERE symbol = ?", [symbol]);
+  if (!revenue || revenue <= 0) return false;
+  const ratio = valueCr / revenue;
+  return ratio < 0.05 || ratio > 50;
+}
+
 async function main() {
   const db = new Db();
   ensureSchema(db);
@@ -31,7 +47,10 @@ async function main() {
   // Only the industries that carry an order book, unless "everyone" is asked for: most of the market has
   // nothing to report and reading its decks is a download spent to learn that again.
   const industries = process.argv.includes("everyone") ? null : ORDER_BOOK_INDUSTRIES;
-  const todo = presentations(db, { days, limit, industries });
+  // "history" goes back through the earlier decks of companies already on the page, which is what gives each
+  // of them a second and third reading - and so a line to draw and a growth figure to measure.
+  const history = process.argv.includes("history");
+  const todo = presentations(db, { days, limit, industries, history });
   console.log(`${todo.length} presentation${todo.length === 1 ? "" : "s"} to read (${days} days back, ${db.isRemote ? "hosted" : "local"} database)\n`);
 
   const found: OrderBookRow[] = [];
@@ -48,6 +67,15 @@ async function main() {
       }
       let hit = orderBookFromText(text);
       let readBy: "rules" | "model" = "rules";
+      // A pattern reading that is absurd against the company's own sales is a misread, not a small order book.
+      // Kalpataru Projects came back as 64 crore against twenty thousand crore of revenue, because the deck's
+      // layout put another number next to the words. The model is asked to read those again.
+      if (hit && useModel && implausible(db, p.symbol, hit.valueCr)) {
+        const second = await orderBookFromModel(text, p.company);
+        console.log(`${label} ${hit.valueCr} cr looks wrong against this company's sales; ${second ? `the model reads ${second.valueCr} cr` : "the model could not read it either, so nothing is stored"}`);
+        hit = second;
+        readBy = "model";
+      }
       // The patterns handle a deck that writes "Order Book: Rs. 1,854 Cr" in one line. Where the deck mentions
       // an order book and the patterns cannot pick the figure out of the jumble, the model reads the excerpt.
       if (!hit && useModel && /order\s*book/i.test(text)) {

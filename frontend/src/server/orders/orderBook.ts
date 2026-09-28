@@ -174,8 +174,15 @@ export function markSeen(db: Db, id: string, status: "read" | "no_order_book" | 
  */
 export const ORDER_BOOK_INDUSTRIES = ["Capital Goods", "Construction", "Construction Materials", "Power", "Realty", "Services", "Metals & Mining", "Information Technology"];
 
-/** Investor presentations not yet read for an order book, newest first. */
-export function presentations(db: Db, opts: { days?: number; limit?: number; symbol?: string | null; industries?: string[] | null } = {}): {
+/**
+ * Investor presentations not yet read for an order book, newest first - or, in history mode, the older decks of
+ * companies whose order book is already known, oldest first.
+ *
+ * Reading the newest deck of every company gives a page of single readings and not one line: a sparkline needs
+ * two readings of the same company, and a growth figure needs them a quarter apart. History mode goes back for
+ * the earlier quarters of companies already on the page, which is what turns a column of numbers into a shape.
+ */
+export function presentations(db: Db, opts: { days?: number; limit?: number; symbol?: string | null; industries?: string[] | null; history?: boolean } = {}): {
   id: string; exchange: "NSE" | "BSE"; symbol: string | null; scripCd: string | null; company: string | null; filedAt: string; pdfUrl: string;
 }[] {
   ensureSchema(db);
@@ -190,8 +197,9 @@ export function presentations(db: Db, opts: { days?: number; limit?: number; sym
       WHERE a.subject LIKE '%Investor Presentation%' AND a.ann_dt >= ? AND a.pdf_url LIKE 'http%'
         AND NOT EXISTS (SELECT 1 FROM company_order_book_seen s WHERE s.id = 'NSE:' || a.ann_id)
       ${industries ? `AND m.industry IN ${inList}` : ""}
+      ${opts.history ? "AND EXISTS (SELECT 1 FROM company_order_book b WHERE b.symbol = a.symbol)" : ""}
       ${opts.symbol ? "AND a.symbol = ?" : ""}
-      ORDER BY a.ann_dt DESC LIMIT ?`,
+      ORDER BY a.ann_dt ${opts.history ? "ASC" : "DESC"} LIMIT ?`,
     [since, ...(industries ?? []), ...(opts.symbol ? [opts.symbol] : []), limit]);
   const bse = db.all<Row>(
     `SELECT b.news_id id, b.scrip_cd, b.headline, b.news_dt, b.pdf_url, m.symbol, m.company
@@ -200,11 +208,14 @@ export function presentations(db: Db, opts: { days?: number; limit?: number; sym
       WHERE b.subcategory LIKE '%Presentation%' AND b.news_dt >= ? AND b.pdf_url LIKE 'http%'
         AND NOT EXISTS (SELECT 1 FROM company_order_book_seen s WHERE s.id = 'BSE:' || b.news_id)
       ${industries ? `AND m.industry IN ${inList}` : ""}
+      ${opts.history ? "AND EXISTS (SELECT 1 FROM company_order_book o WHERE o.symbol = m.symbol OR o.scrip_cd = b.scrip_cd)" : ""}
       ${opts.symbol ? "AND m.symbol = ?" : ""}
-      ORDER BY b.news_dt DESC LIMIT ?`,
+      ORDER BY b.news_dt ${opts.history ? "ASC" : "DESC"} LIMIT ?`,
     [since, ...(industries ?? []), ...(opts.symbol ? [opts.symbol] : []), limit]);
+  const order = (a: { filedAt: string }, b: { filedAt: string }) =>
+    opts.history ? a.filedAt.localeCompare(b.filedAt) : b.filedAt.localeCompare(a.filedAt);
   return [
     ...nse.map((r) => ({ id: `NSE:${String(r.id)}`, exchange: "NSE" as const, symbol: r.symbol ? String(r.symbol) : null, scripCd: null, company: r.company ? String(r.company) : null, filedAt: String(r.ann_dt), pdfUrl: String(r.pdf_url) })),
     ...bse.map((r) => ({ id: `BSE:${String(r.id)}`, exchange: "BSE" as const, symbol: r.symbol ? String(r.symbol) : null, scripCd: r.scrip_cd ? String(r.scrip_cd) : null, company: r.company ? String(r.company) : (r.headline ? String(r.headline).split(" - ")[0] : null), filedAt: String(r.news_dt), pdfUrl: String(r.pdf_url) })),
-  ].sort((a, b) => b.filedAt.localeCompare(a.filedAt)).slice(0, limit);
+  ].sort(order).slice(0, limit);
 }
