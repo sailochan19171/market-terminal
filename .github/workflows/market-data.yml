@@ -115,6 +115,12 @@ jobs:
         continue-on-error: true
         run: npx tsx src/server/cli.ts corp-actions
 
+      # What the business press is reporting, from their own public feeds, so the news section stays current
+      # with the PC off like everything else.
+      - name: Market news
+        continue-on-error: true
+        run: npx tsx src/server/cli.ts news
+
       # The figures the site actually scores companies on. Collecting results without rebuilding these leaves
       # every score describing the quarter before last: the filings arrive, the homepage does not move. It runs
       # last because it reads what the steps above wrote.
