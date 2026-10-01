@@ -1,7 +1,7 @@
 # The data pipeline, running on GitHub's machines instead of one PC.
 #
 # Every 15 minutes it pulls the exchanges' latest announcements, reads any new order filing out of its PDF, and
-# writes both straight into the hosted Turso database the site reads from (MARKET_DB=turso). After the close it
+# writes both straight into the Postgres on Railway the site reads from (MARKET_DB=postgres). After the close it
 # also pulls the day's prices and the rest of NSE's corporate feeds. So the site keeps gaining data whether or not
 # any particular computer is switched on.
 #
@@ -9,7 +9,7 @@
 # gets there first wins and the other simply finds nothing new.
 #
 # Secrets this needs (Settings -> Secrets and variables -> Actions):
-#   TURSO_DATABASE_URL, TURSO_AUTH_TOKEN   the hosted database
+#   SQL_HTTP_URL, SQL_HTTP_TOKEN           the hosted Postgres, through the front door beside it
 #   LLM_API_KEY                            the model that reads the order PDFs (optional: without it the
 #                                          pattern reader still fills in values and customers)
 name: Market data
@@ -33,10 +33,10 @@ jobs:
       run:
         working-directory: frontend
     env:
-      MARKET_DB: turso
+      MARKET_DB: postgres
       MARKET_JOBS: "off"
-      TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
-      TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+      SQL_HTTP_URL: ${{ secrets.SQL_HTTP_URL }}
+      SQL_HTTP_TOKEN: ${{ secrets.SQL_HTTP_TOKEN }}
       LLM_PROVIDER: groq
       LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
       LLM_MODEL: openai/gpt-oss-120b
