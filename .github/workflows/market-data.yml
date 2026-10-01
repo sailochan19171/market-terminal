@@ -115,6 +115,13 @@ jobs:
         continue-on-error: true
         run: npx tsx src/server/cli.ts corp-actions
 
+      # The figures the site actually scores companies on. Collecting results without rebuilding these leaves
+      # every score describing the quarter before last: the filings arrive, the homepage does not move. It runs
+      # last because it reads what the steps above wrote.
+      - name: Company metrics
+        continue-on-error: true
+        run: npx tsx src/server/cli.ts metrics
+
       # Fails the run when any dataset has fallen behind, whatever the steps above reported. A green run over
       # two-day-old prices is worse than a red one, because nobody goes looking for a problem the log denies.
       - name: What the run found
